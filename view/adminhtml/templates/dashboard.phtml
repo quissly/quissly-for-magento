@@ -1,0 +1,362 @@
+<?php
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ *
+ * Per-website Quissly status. Every value here was already being recorded and
+ * shown nowhere; the point of the page is that a merchant can answer "is this
+ * working, and if not, whose half is missing?" without shell access.
+ *
+ * @var \Quissly\Search\Block\Adminhtml\Dashboard $block
+ * @var \Magento\Framework\Escaper $escaper
+ */
+$websites = $block->websites();
+?>
+<style>
+    /* Breathing room: the stock admin tables and headings sit flush against each other. */
+    .quissly-dashboard .admin__page-section { margin-bottom: 48px; }
+    .quissly-dashboard .admin__page-section-title { margin-bottom: 20px; }
+    .quissly-dashboard .admin__table-primary > tbody > tr > th,
+    .quissly-dashboard .admin__table-primary > tbody > tr > td,
+    .quissly-dashboard .admin__table-primary > thead > tr > th {
+        padding: 14px 16px 14px 0; vertical-align: middle;
+    }
+    .quissly-dashboard .admin__table-primary > tbody > tr > td small { line-height: 1.5; }
+    .quissly-dashboard td > [class^="grid-severity-"] + .note { margin-top: 10px; }
+    /* The admin theme draws a top border on th only, and hides the last row's bottom border
+       on td only - both left a line over the label column that stopped halfway. Rows are
+       separated by their bottom borders; the last row has none on either cell. */
+    .quissly-dashboard .admin__table-primary > tbody > tr > th { border-top: 0; }
+    .quissly-dashboard .admin__table-primary > tbody > tr:last-child > th { border-bottom-color: transparent; }
+    .quissly-dashboard h3 { margin: 36px 0 14px; }
+    .quissly-dashboard .admin__table-primary + .admin__field { margin-top: 24px; }
+    .quissly-dashboard .admin__field form p { margin-top: 10px; }
+</style>
+<div class="quissly-dashboard">
+<?php foreach ($websites as $site): ?>
+    <section class="admin__page-section">
+        <div class="admin__page-section-title">
+            <span class="title"><?= $escaper->escapeHtml($site['name']) ?></span>
+        </div>
+
+        <div class="admin__page-section-content">
+            <?php if (!empty($site['shares_service'])): ?>
+                <?php
+                // Products are identified by their Magento id, which is the
+                // same number on every website - so two websites pushing to one
+                // Quissly service overwrite each other's copy of every shared
+                // product. Nothing else can detect this: a connection test
+                // checks one website in isolation and both report healthy.
+                $shared = __(
+                    'This website uses the same Quissly service as another website. If they '
+                    . 'share any products, each sync overwrites the other\'s copy - including '
+                    . 'title, description, URL and stock. Give each website its own Quissly '
+                    . 'service unless their catalogues are entirely separate.'
+                );
+                ?>
+                <div class="message message-warning">
+                    <?= $escaper->escapeHtml($shared) ?>
+                </div>
+            <?php endif; ?>
+            <table class="admin__table-primary">
+                <tbody>
+                    <tr>
+                        <th><?= $escaper->escapeHtml(__('Quissly search on your storefront')) ?></th>
+                        <td>
+                            <?php $state = $site['intercepting']
+                                ? __('Live')
+                                : __('Not live yet'); ?>
+                            <?php $severity = $site['intercepting'] ? 'notice' : 'minor'; ?>
+                            <span class="grid-severity-<?= $escaper->escapeHtmlAttr($severity) ?>">
+                                <span><?= $escaper->escapeHtml($state) ?></span>
+                            </span>
+                            <p class="note">
+                                <?php $searchNote = $site['intercepting']
+                                    ? __('Shoppers searching your store are getting Quissly results.')
+                                    : __('Shoppers are getting Magento\'s own search results for now.'); ?>
+                                <span><?= $escaper->escapeHtml($searchNote) ?></span>
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><?= $escaper->escapeHtml(__('Credentials')) ?></th>
+                        <td>
+                            <?php $creds = $site['configured']
+                                ? __('Configured')
+                                : __('Missing - add them in Configuration'); ?>
+                            <?= $escaper->escapeHtml($creds) ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><?= $escaper->escapeHtml(__('First catalog sync')) ?></th>
+                        <td>
+                            <?php if ($site['gate_open']): ?>
+                                <?= $escaper->escapeHtml(__('Complete - interception is unlocked for this website.')) ?>
+                            <?php else: ?>
+                                <?php $pending = __('Not complete. Until it finishes, searches use native search.'); ?>
+                                <?= $escaper->escapeHtml($pending) ?>
+                            <?php endif; ?>
+                            <?php $progress = $site['progress']; ?>
+                            <?php if (is_array($progress) && !empty($progress['gate_blocked'])): ?>
+                                <?php
+                                // The sync ran to completion and delivered
+                                // NOTHING - the queue drained by failed
+                                // attempts. Without saying so, the row above
+                                // reads as "still working on it", and the
+                                // merchant waits for something that will not
+                                // happen on its own.
+                                $blocked = __(
+                                    'The last sync finished without sending any products, so '
+                                    . 'interception stays off. Check the connection, then start it again.'
+                                );
+                                ?>
+                                <div>
+                                    <span class="grid-severity-critical">
+                                        <span><?= $escaper->escapeHtml($blocked) ?></span>
+                                    </span>
+                                </div>
+                            <?php endif; ?>
+                            <?php $fullSync = is_array($progress) && (int)($progress['total'] ?? 0) > 0; ?>
+                            <?php $lastRun = is_array($progress) ? ($progress['last_run'] ?? null) : null; ?>
+                            <?php if ($fullSync || is_array($lastRun)): ?>
+                                <div>
+                                    <small data-quissly-progress="<?= $escaper->escapeHtmlAttr((string)$site['id']) ?>"
+                                        <?php $syncing = !empty($progress['running']) || !$site['gate_open']; ?>
+                                        <?= $syncing ? 'data-quissly-syncing="1"' : '' ?>>
+                                        <?php if ($fullSync): ?>
+                                            <?= $escaper->escapeHtml(__(
+                                                'Progress: %1 of %2 sent, %3 failed.',
+                                                (int)($progress['ok'] ?? 0),
+                                                (int)($progress['total'] ?? 0),
+                                                (int)($progress['failed'] ?? 0)
+                                            )) ?>
+                                        <?php endif; ?>
+                                        <?php if (!empty($progress['running'])): ?>
+                                            <?= $escaper->escapeHtml(__('Running now.')) ?>
+                                        <?php else: ?>
+                                            <?php if (is_array($lastRun)): ?>
+                                                <?php // Cron drains ordinary saves and imports too; without this
+                                                      // the panel showed nothing at all for them. ?>
+                                                <?= $escaper->escapeHtml(__(
+                                                    'Last sync %1: %2 sent, %3 failed, %4 still queued.',
+                                                    $block->lastRunAt($progress),
+                                                    (int)($lastRun['ok'] ?? 0),
+                                                    (int)($lastRun['failed'] ?? 0),
+                                                    (int)($lastRun['pending'] ?? 0)
+                                                )) ?>
+                                            <?php endif; ?>
+                                            <?php if (!empty($progress['stalled'])): ?>
+                                                <?php $stopped = __(
+                                                    'This sync stopped before it finished. Start it again to continue.'
+                                                ); ?>
+                                                <?= $escaper->escapeHtml($stopped) ?>
+                                            <?php endif; ?>
+                                        <?php endif; ?>
+                                    </small>
+                                </div>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <?php if (is_array($site['health'])): ?>
+                    <tr>
+                        <th><?= $escaper->escapeHtml(__('Connection health')) ?></th>
+                        <td>
+                            <?php $failure = __('Last call failed: %1', (string)$site['health']['code']); ?>
+                            <span class="grid-severity-critical">
+                                <span><?= $escaper->escapeHtml($failure) ?></span>
+                            </span>
+                            <?php if (!empty($site['health']['explanation'])): ?>
+                                <div><small><?= $escaper->escapeHtml($site['health']['explanation']) ?></small></div>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+
+            <h3><?= $escaper->escapeHtml(__('Features - both switches must be on')) ?></h3>
+            <table class="admin__table-primary">
+                <thead>
+                    <tr>
+                        <th><?= $escaper->escapeHtml(__('Feature')) ?></th>
+                        <th><?= $escaper->escapeHtml(__('Enabled by you')) ?></th>
+                        <th><?= $escaper->escapeHtml(__('Enabled by Quissly')) ?></th>
+                        <th><?= $escaper->escapeHtml(__('Detail')) ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($site['features'] as $feature): ?>
+                    <tr>
+                        <td><?= $escaper->escapeHtml($feature['label']) ?></td>
+                        <td><?= $escaper->escapeHtml($feature['merchant'] ? __('Yes') : __('No')) ?></td>
+                        <?php
+                        // Three states, not two: "not checked yet" is neither a
+                        // success nor a failure, and showing it as either would
+                        // mislead exactly the merchant this page exists to help.
+                        $quisslyLabels = [
+                            'ok' => __('Yes'),
+                            'blocked' => __('No'),
+                            'unknown' => __('Not checked yet'),
+                            'after_sync' => __('After first sync'),
+                        ];
+                        $quisslySeverity = [
+                            'ok' => 'notice',
+                            'blocked' => 'critical',
+                            'unknown' => 'minor',
+                            'after_sync' => 'minor',
+                        ];
+                        $state = (string)$feature['quissly'];
+                        $severityClass = $quisslySeverity[$state] ?? 'minor';
+                        ?>
+                        <td>
+                            <span class="grid-severity-<?= $escaper->escapeHtmlAttr($severityClass) ?>">
+                                <span><?= $escaper->escapeHtml($quisslyLabels[$state] ?? __('Unknown')) ?></span>
+                            </span>
+                        </td>
+                        <td><small><?= $escaper->escapeHtml($feature['detail']) ?></small></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+
+            <div class="admin__field">
+                <?php $holdRemaining = (int)($site['hold_remaining'] ?? 0); ?>
+                <form method="post" action="<?= $escaper->escapeUrl($site['sync_url']) ?>">
+                    <?= $block->getBlockHtml('formkey') ?>
+                    <button type="submit" class="action-secondary" <?= $holdRemaining > 0 ? 'disabled' : '' ?>>
+                        <?= $escaper->escapeHtml(__('Start full catalog sync')) ?>
+                    </button>
+                    <?php if ($holdRemaining > 0): ?>
+                        <?php
+                        // Settling period after a connect (ConnectHold). The number
+                        // is wrapped so the script below can count it down in place;
+                        // the phrase is escaped first and the span spliced in after.
+                        $holdNote = $escaper->escapeHtml(__(
+                            'Your store is still being set up. The first catalog sync can start in %1 seconds.',
+                            '#SECONDS#'
+                        ));
+                        $holdNote = str_replace(
+                            '#SECONDS#',
+                            '<span data-quissly-hold-seconds>' . $holdRemaining . '</span>',
+                            $holdNote
+                        );
+                        ?>
+                        <p><small data-quissly-hold="<?= (int)$holdRemaining ?>">
+                            <?= /* @noEscape */ $holdNote ?>
+                        </small></p>
+                    <?php endif; ?>
+                    <?php $syncNote = __('Queues every eligible product. The sync cron sends them in batches.'); ?>
+                    <p><small><?= $escaper->escapeHtml($syncNote) ?></small></p>
+                </form>
+            </div>
+        </div>
+    </section>
+<?php endforeach; ?>
+</div>
+
+<?php
+// A first sync takes minutes. Reporting it only as often as the merchant
+// presses reload makes a working sync look frozen, and the commonest reaction
+// to that is to press "Start full sync" again.
+//
+// Polls a read-only JSON endpoint until nothing is running, then reloads once
+// so the whole page (gate state, unlocked toggles, banners) is consistent
+// rather than half-updated by JavaScript.
+?>
+<script>
+(function () {
+    'use strict';
+
+    var url = '<?= $escaper->escapeJs($block->getUrl('quissly/dashboard/progress')) ?>';
+    var INTERVAL_MS = 25000;
+    var MAX_TICKS = 72;          // ~30 minutes, so an abandoned tab stops polling
+    var timer = null;
+    var ticks = 0;
+    // Only a run we WATCHED finish is worth reloading for. Reloading because
+    // nothing is running would loop forever on a store whose gate is closed
+    // and whose sync has not been started yet.
+    var sawRunning = false;
+
+    function line(el, p) {
+        var txt = '';
+
+        // Mirrors what the server rendered into this element, so a poll never
+        // rewrites a store that has run no full sync into "0 of 0 sent".
+        if (p.total) {
+            txt = 'Progress: ' + (p.ok || 0) + ' of ' + p.total + ' sent, ' + (p.failed || 0) + ' failed.';
+        }
+        if (p.running) {
+            txt += (txt ? ' ' : '') + 'Running now.';
+            if (p.pending) {
+                txt += ' ' + p.pending + ' still queued.';
+            }
+        } else if (p.last_run) {
+            var at = p.last_run.at ? new Date(p.last_run.at * 1000).toLocaleString() : '';
+            txt += (txt ? ' ' : '') + 'Last sync' + (at ? ' ' + at : '') + ': ' +
+                (p.last_run.ok || 0) + ' sent, ' +
+                (p.last_run.failed || 0) + ' failed, ' +
+                (p.last_run.pending || 0) + ' still queued.';
+        }
+        if (p.stalled) {
+            txt += (txt ? ' ' : '') + 'This sync stopped before it finished. Start it again to continue.';
+        }
+        el.textContent = txt;
+    }
+
+    function tick() {
+        if (++ticks > MAX_TICKS) {
+            window.clearInterval(timer);
+            return;
+        }
+        fetch(url, {credentials: 'same-origin', headers: {'X-Requested-With': 'XMLHttpRequest'}})
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                if (!data || !data.sites) {
+                    return;
+                }
+                var stillRunning = false;
+                Object.keys(data.sites).forEach(function (id) {
+                    var site = data.sites[id];
+                    var el = document.querySelector('[data-quissly-progress="' + id + '"]');
+                    if (el && site.progress) {
+                        line(el, site.progress);
+                    }
+                    if (site.running) {
+                        stillRunning = true;
+                        sawRunning = true;
+                    }
+                });
+                if (sawRunning && !stillRunning) {
+                    // Finished while we were watching: reload so the gate, the
+                    // feature toggles and any banner all agree with each other.
+                    window.clearInterval(timer);
+                    window.location.reload();
+                }
+            })
+            .catch(function () { /* a dropped poll is not worth a message; the next one retries */ });
+    }
+
+    // Only poll when something is actually in flight.
+    if (document.querySelector('[data-quissly-syncing="1"]')) {
+        timer = window.setInterval(tick, INTERVAL_MS);
+    }
+
+    // Settling period after a connect: count the note down and unlock the
+    // sync button when it reaches zero, so nobody has to reload to find out.
+    document.querySelectorAll('[data-quissly-hold]').forEach(function (note) {
+        var left = parseInt(note.getAttribute('data-quissly-hold'), 10);
+        var number = note.querySelector('[data-quissly-hold-seconds]');
+        var button = note.closest('form').querySelector('button[type="submit"]');
+        var countdown = window.setInterval(function () {
+            left -= 1;
+            if (left <= 0) {
+                window.clearInterval(countdown);
+                note.parentNode.hidden = true;
+                button.disabled = false;
+                return;
+            }
+            number.textContent = String(left);
+        }, 1000);
+    });
+})();
+</script>

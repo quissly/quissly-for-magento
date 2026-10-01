@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Cron:etc/crontab.xsd">
+    <group id="quissly">
+        <job name="quissly_sync_worker" instance="Quissly\Search\Cron\SyncCron" method="execute">
+            <schedule>* * * * *</schedule>
+        </job>
+        <!-- Stock changes made without a product save (a sale, MSI source
+             updates, scripts) fire no observer; this compares Magento's stock
+             table against what was sent and re-queues the difference. -->
+        <job name="quissly_stock_reconcile" instance="Quissly\Search\Cron\StockReconcileCron" method="execute">
+            <schedule>* * * * *</schedule>
+        </job>
+        <!-- Search bar suggestions from the catalog: once per website (ShowcaseRunner keeps its
+             own schedule - retries hourly, stops when done). -->
+        <job name="quissly_showcase" instance="Quissly\Search\Cron\ShowcaseCron" method="execute">
+            <schedule>*/15 * * * *</schedule>
+        </job>
+        <job name="quissly_reconciliation" instance="Quissly\Search\Cron\ReconciliationCron" method="execute">
+            <!-- Weekly re-push: the false-success-bug backstop. Sunday 03:00. -->
+            <schedule>0 3 * * *</schedule>
+        </job>
+    </group>
+</config>

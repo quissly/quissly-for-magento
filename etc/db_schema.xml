@@ -1,0 +1,55 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ *
+ * Sync tables. Rows are keyed (product_id, website_id) - the
+ * multi-website model. All access via ResourceModels.
+ */
+-->
+<schema xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Setup/Declaration/Schema/etc/schema.xsd">
+    <table name="quissly_sync_queue" resource="default" engine="innodb" comment="Quissly dirty-product sync queue">
+        <column xsi:type="int" name="product_id" unsigned="true" nullable="false" comment="Product entity id"/>
+        <column xsi:type="smallint" name="website_id" unsigned="true" nullable="false" comment="Website id"/>
+        <column xsi:type="varchar" name="op" length="10" nullable="false" default="upsert" comment="upsert|delete"/>
+        <column xsi:type="smallint" name="attempts" unsigned="true" nullable="false" default="0" comment="Send attempts"/>
+        <column xsi:type="timestamp" name="created_at" nullable="false" default="CURRENT_TIMESTAMP" comment="Enqueued at"/>
+        <column xsi:type="timestamp" name="deferred_until" nullable="true" comment="Held back until this time (price index not ready)"/>
+        <column xsi:type="int" name="version" unsigned="true" nullable="false" default="0" comment="Bumped on every re-enqueue; a settle removes the row only at the version it claimed"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="product_id"/>
+            <column name="website_id"/>
+        </constraint>
+        <index referenceId="QUISSLY_SYNC_QUEUE_WEBSITE_CREATED" indexType="btree">
+            <column name="website_id"/>
+            <column name="created_at"/>
+        </index>
+        <index referenceId="QUISSLY_SYNC_QUEUE_WEBSITE_DEFERRED" indexType="btree">
+            <column name="website_id"/>
+            <column name="deferred_until"/>
+        </index>
+    </table>
+    <table name="quissly_product_state" resource="default" engine="innodb" comment="Quissly per-product ingest state">
+        <column xsi:type="int" name="product_id" unsigned="true" nullable="false" comment="Product entity id"/>
+        <column xsi:type="smallint" name="website_id" unsigned="true" nullable="false" comment="Website id"/>
+        <column xsi:type="timestamp" name="ingested_at" nullable="false" default="CURRENT_TIMESTAMP" comment="First successful ingest"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="product_id"/>
+            <column name="website_id"/>
+        </constraint>
+    </table>
+    <table name="quissly_stock_snapshot" resource="default" engine="innodb" comment="Quissly stock status of each product as last sent">
+        <column xsi:type="int" name="product_id" unsigned="true" nullable="false" comment="Product entity id (parent or variant)"/>
+        <column xsi:type="smallint" name="website_id" unsigned="true" nullable="false" comment="Website id"/>
+        <column xsi:type="smallint" name="stock_status" unsigned="true" nullable="false" comment="cataloginventory_stock_status.stock_status at send time"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="product_id"/>
+            <column name="website_id"/>
+        </constraint>
+        <index referenceId="QUISSLY_STOCK_SNAPSHOT_WEBSITE" indexType="btree">
+            <column name="website_id"/>
+        </index>
+    </table>
+</schema>

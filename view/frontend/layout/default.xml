@@ -1,0 +1,54 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ */
+-->
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <body>
+        <referenceContainer name="before.body.end">
+            <!-- QChat widget embed (SPEC Stage 6): renders nothing unless the
+                 website's qchat toggle is ON and an agent id is configured. -->
+            <block name="quissly.qchat.embed"
+                   template="Quissly_Search::qchat.phtml">
+                <arguments>
+                    <argument name="qchat_config" xsi:type="object">Quissly\Search\ViewModel\QChatConfig</argument>
+                </arguments>
+            </block>
+            <!-- Immersive search overlay (default OFF): presentation only.
+                 Declared FIRST so its actions slot exists before voice/image load. -->
+            <block name="quissly.overlay.widget"
+                   template="Quissly_Search::overlay.phtml">
+                <arguments>
+                    <argument name="overlay_config" xsi:type="object">Quissly\Search\ViewModel\OverlayConfig</argument>
+                </arguments>
+            </block>
+            <!-- Quick type-ahead (default OFF): replaces Magento's own search
+                 dropdown while on. Renders nothing when the toggle is off. -->
+            <block name="quissly.quick.widget"
+                   template="Quissly_Search::quick.phtml">
+                <arguments>
+                    <argument name="quick_config" xsi:type="object">Quissly\Search\ViewModel\QuickConfig</argument>
+                </arguments>
+            </block>
+            <!-- Voice-search widget: renders nothing unless the
+                 website's voice toggle is ON. -->
+            <block name="quissly.voice.widget"
+                   template="Quissly_Search::voice.phtml">
+                <arguments>
+                    <argument name="voice_config" xsi:type="object">Quissly\Search\ViewModel\VoiceConfig</argument>
+                </arguments>
+            </block>
+            <!-- Image-search widget: renders nothing unless the
+                 website's image toggle is ON. -->
+            <block name="quissly.image.widget"
+                   template="Quissly_Search::image.phtml">
+                <arguments>
+                    <argument name="image_config" xsi:type="object">Quissly\Search\ViewModel\ImageConfig</argument>
+                </arguments>
+            </block>
+        </referenceContainer>
+    </body>
+</page>

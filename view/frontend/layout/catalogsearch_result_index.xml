@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ *
+ * The ONLY thing this module adds to a results page, and it renders nothing
+ * unless the URL carries ?quissly_debug=1. No template is overridden and no
+ * existing block is moved or restyled - a shopper's results page is byte-for-
+ * byte what the theme produced.
+ *
+ * after="-" is load-bearing, not cosmetic: the search runs when the product
+ * list block loads its collection, so a block placed BEFORE it renders while
+ * the signal is still empty and reports nothing at all.
+ */
+-->
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <body>
+        <referenceContainer name="content">
+            <block name="quissly.search.origin"
+                   class="Magento\Framework\View\Element\Template"
+                   template="Quissly_Search::search-origin.phtml"
+                   after="-">
+                <arguments>
+                    <argument name="search_origin" xsi:type="object">Quissly\Search\ViewModel\SearchOrigin</argument>
+                </arguments>
+            </block>
+        </referenceContainer>
+    </body>
+</page>

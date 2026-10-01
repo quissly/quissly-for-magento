@@ -1,0 +1,142 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ *
+ * Global DI configuration. Populated from Stage 1 (API client wiring) onward;
+ * plugins/observers only - no preferences on core classes.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    <type name="Magento\Framework\Console\CommandList">
+        <arguments>
+            <argument name="commands" xsi:type="array">
+                <item name="quissly_gate" xsi:type="object">Quissly\Search\Console\Command\GateCommand</item>
+                <item name="quissly_sync" xsi:type="object">Quissly\Search\Console\Command\SyncCommand</item>
+            </argument>
+        </arguments>
+    </type>
+    <!--
+        Keep credentials out of app:config:dump.
+
+        Without this, `bin/magento app:config:dump` writes the encrypted bearer
+        token and RSA private key into app/etc/config.php - a file that is
+        routinely committed to version control. Encrypted is not safe here: the
+        ciphertext travels with the crypt key in the same repository.
+
+        `sensitive` = never dumped at all.
+        `environment` = dumped per-environment rather than shared, for values
+        that legitimately differ between installs but are not secrets.
+
+        The PUBLIC key belongs in `environment`, not in the shared dump. It is
+        not a secret, but it is one half of a per-install keypair whose private
+        half is `sensitive` and therefore never dumped. Sharing the public half
+        across installs would leave an environment holding a public key that
+        does not match its own private key - signing would fail with a bare
+        401, the hardest symptom in the protocol to diagnose.
+    -->
+    <type name="Magento\Config\Model\Config\TypePool">
+        <arguments>
+            <argument name="sensitive" xsi:type="array">
+                <item name="quissly/connection/api_token" xsi:type="string">1</item>
+                <item name="quissly/connection/private_key" xsi:type="string">1</item>
+            </argument>
+            <argument name="environment" xsi:type="array">
+                <item name="quissly/connection/public_key" xsi:type="string">1</item>
+                <item name="quissly/connection/api_base_url" xsi:type="string">1</item>
+                <item name="quissly/connection/environment" xsi:type="string">1</item>
+                <item name="quissly/features/qchat_agent_id" xsi:type="string">1</item>
+                <!-- Not secrets, but per-installation and personal: config:dump
+                     writes them into app/etc/config.php, which merchants commit.
+                     account_email is someone's address; project_id identifies
+                     the Quissly account. -->
+                <item name="quissly/connection/project_id" xsi:type="string">1</item>
+                <item name="quissly/connection/store_id" xsi:type="string">1</item>
+                <item name="quissly/connection/account_email" xsi:type="string">1</item>
+                <item name="quissly/connection/console_url" xsi:type="string">1</item>
+                <item name="quissly/connection/panel_url" xsi:type="string">1</item>
+            </argument>
+        </arguments>
+    </type>
+    <!--
+        The module's own log file. Without this the [quissly] lines land in
+        Magento's shared system.log, and README's "safe to share with support"
+        promise cannot hold for the file a merchant would actually send.
+    -->
+    <type name="Quissly\Search\Logger\Handler">
+        <arguments>
+            <argument name="filesystem" xsi:type="object">Magento\Framework\Filesystem\Driver\File</argument>
+        </arguments>
+    </type>
+    <type name="Quissly\Search\Logger\Logger">
+        <arguments>
+            <argument name="name" xsi:type="string">quissly</argument>
+            <argument name="handlers" xsi:type="array">
+                <item name="quissly" xsi:type="object">Quissly\Search\Logger\Handler</item>
+            </argument>
+        </arguments>
+    </type>
+    <!--
+        Point every class that logs at the module's own file. Each still
+        type-hints PSR-3 LoggerInterface, so nothing is coupled to Monolog.
+    -->
+    <!-- Console-host clients: same log destination as the search clients, or
+         their failures land in system.log where nobody looks for them. -->
+    <type name="Quissly\Search\Model\Api\QuickClient">
+        <arguments>
+            <argument name="logger" xsi:type="object">Quissly\Search\Logger\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Quissly\Search\Model\Api\Provisioner">
+        <arguments>
+            <argument name="logger" xsi:type="object">Quissly\Search\Logger\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Quissly\Search\Model\Api\PanelSession">
+        <arguments>
+            <argument name="logger" xsi:type="object">Quissly\Search\Logger\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Quissly\Search\Model\Api\ServiceDirectory">
+        <arguments>
+            <argument name="logger" xsi:type="object">Quissly\Search\Logger\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Quissly\Search\Model\Api\ConnectionService">
+        <arguments>
+            <argument name="logger" xsi:type="object">Quissly\Search\Logger\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Quissly\Search\Model\Api\MediaSearchClient">
+        <arguments>
+            <argument name="logger" xsi:type="object">Quissly\Search\Logger\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Quissly\Search\Model\Api\LiveSearchClient">
+        <arguments>
+            <argument name="logger" xsi:type="object">Quissly\Search\Logger\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Quissly\Search\Model\Api\CatalogClient">
+        <arguments>
+            <argument name="logger" xsi:type="object">Quissly\Search\Logger\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Quissly\Search\Model\Sync\SyncWorker">
+        <arguments>
+            <argument name="logger" xsi:type="object">Quissly\Search\Logger\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Quissly\Search\Plugin\Frontend\SearchPlugin">
+        <arguments>
+            <argument name="logger" xsi:type="object">Quissly\Search\Logger\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Quissly\Search\Cron\ReconciliationCron">
+        <arguments>
+            <argument name="logger" xsi:type="object">Quissly\Search\Logger\Logger</argument>
+        </arguments>
+    </type>
+</config>

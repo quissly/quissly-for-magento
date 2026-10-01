@@ -1,0 +1,34 @@
+<?php
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ *
+ * QChat widget embed (SPEC Stage 6). Emits the vendor web component tag and
+ * its CDN bundle when - and only when - the current website has qchat enabled
+ * AND an agent id configured; otherwise renders nothing at all (the Woo
+ * contract, mirrored). The agent id is the middleware's PUBLIC Service id;
+ * no credential ever appears in markup. External hosts
+ * are whitelisted in etc/csp_whitelist.xml. With the widget comes the chat
+ * cart bridge (web/js/quissly-chat-cart.js, config in data attributes -
+ * CSP-safe, no inline JS), so the chat's "Add to Cart" reaches Magento's cart.
+ *
+ * @var \Magento\Framework\View\Element\Template $block
+ * @var \Magento\Framework\Escaper $escaper
+ */
+
+/** @var \Quissly\Search\ViewModel\QChatConfig $qchatConfig */
+$qchatConfig = $block->getData('qchat_config');
+?>
+<?php if ($qchatConfig && $qchatConfig->shouldRender()): ?>
+<ai-chatbot agent-id="<?= $escaper->escapeHtmlAttr($qchatConfig->agentId()) ?>"></ai-chatbot>
+<script src="<?= $escaper->escapeUrl($qchatConfig->scriptUrl()) ?>" async></script>
+<div data-quissly-chat-cart hidden
+     data-resolve-url="<?= $escaper->escapeUrl($block->getUrl('quissly/cart/resolve')) ?>"
+     data-add-url="<?= $escaper->escapeUrl($block->getUrl('checkout/cart/add')) ?>"
+     data-update-url="<?= $escaper->escapeUrl($block->getUrl('checkout/sidebar/updateItemQty')) ?>"
+     data-remove-url="<?= $escaper->escapeUrl($block->getUrl('checkout/sidebar/removeItem')) ?>"
+     data-section-url="<?= $escaper->escapeUrl($block->getUrl('customer/section/load')) ?>"></div>
+<script
+    src="<?= $escaper->escapeUrl($block->getViewFileUrl('Quissly_Search::js/quissly-chat-cart.js')) ?>"
+    defer></script>
+<?php endif; ?>

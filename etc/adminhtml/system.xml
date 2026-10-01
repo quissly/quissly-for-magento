@@ -1,0 +1,214 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Config:etc/system_file.xsd">
+    <system>
+        <tab id="quissly" translate="label" sortOrder="450">
+            <label>Quissly</label>
+        </tab>
+        <section id="quissly" translate="label" type="text" sortOrder="10"
+                 showInDefault="1" showInWebsite="1" showInStore="0">
+            <label>AI Search</label>
+            <tab>quissly</tab>
+            <resource>Quissly_Search::config</resource>
+            <group id="connection" translate="label" type="text" sortOrder="10"
+                   showInDefault="1" showInWebsite="1" showInStore="0">
+                <label>Connection</label>
+                <field id="environment" translate="label comment" type="select" sortOrder="10"
+                       showInDefault="0" showInWebsite="0" showInStore="0" canRestore="1">
+                    <backend_model>Quissly\Search\Model\Config\Backend\StorefrontSetting</backend_model>
+                    <label>Environment</label>
+                    <source_model>Quissly\Search\Model\Config\Source\Environment</source_model>
+                    <comment>The environment your Quissly credential is registered under. Leave "prod" unless Quissly told you otherwise.</comment>
+                </field>
+                <field id="api_base_url" translate="label comment" type="text" sortOrder="15"
+                       showInDefault="0" showInWebsite="0" showInStore="0" canRestore="1">
+                    <backend_model>Quissly\Search\Model\Config\Backend\ApiBaseUrl</backend_model>
+                    <label>API base URL (advanced)</label>
+                    <comment><![CDATA[Leave empty to use Quissly's production API (https://api.quissly.com). Set this only if Quissly directed you to a different host (a dev/staging deployment, or a regional endpoint).]]></comment>
+                </field>
+                <field id="project_id" translate="label comment" type="text" sortOrder="35"
+                       showInDefault="0" showInWebsite="0" showInStore="0" canRestore="1">
+                    <backend_model>Quissly\Search\Model\Config\Backend\StorefrontSetting</backend_model>
+                    <label>Quissly project id</label>
+                    <comment>From Quissly. Needed only to open the Quissly panel inside this admin.</comment>
+                </field>
+                <!-- Written by Connect, then sent on every panel login alongside the
+                     project id and token. Hidden like the other credentials: a merchant
+                     never types it, and editing it silently breaks panel login. It is
+                     shown read-only in the Keys & Connection block instead. -->
+                <field id="account_email" translate="label comment" type="text" sortOrder="36"
+                       showInDefault="0" showInWebsite="0" showInStore="0" canRestore="1">
+                    <backend_model>Quissly\Search\Model\Config\Backend\StorefrontSetting</backend_model>
+                    <label>Quissly account email</label>
+                    <comment><![CDATA[The account Quissly created for this store, not your own Quissly
+                        login &mdash; a personal login is refused. Ask Quissly if you are unsure.]]></comment>
+                </field>
+                <!-- Written by Connect (or looked up on first use): the qsearch service's
+                     quissly_service_link, the namespace of the product ids the chat widget
+                     uses. Hidden: nobody types it (Model/Cart/ChatIdMap). -->
+                <field id="search_namespace" translate="label comment" type="text" sortOrder="36"
+                       showInDefault="0" showInWebsite="0" showInStore="0">
+                    <label>Quissly search namespace</label>
+                    <comment>Set by Quissly. Lets the chat's Add to Cart find your products.</comment>
+                </field>
+                <field id="console_url" translate="label comment" type="text" sortOrder="37"
+                       showInDefault="0" showInWebsite="0" showInStore="0" canRestore="1">
+                    <backend_model>Quissly\Search\Model\Config\Backend\StorefrontSetting</backend_model>
+                    <label>Console URL (advanced)</label>
+                    <comment>Leave empty unless Quissly directs you elsewhere.</comment>
+                </field>
+                <field id="panel_url" translate="label comment" type="text" sortOrder="38"
+                       showInDefault="0" showInWebsite="0" showInStore="0" canRestore="1">
+                    <backend_model>Quissly\Search\Model\Config\Backend\StorefrontSetting</backend_model>
+                    <label>Panel URL (advanced)</label>
+                    <comment>Leave empty unless Quissly directs you elsewhere.</comment>
+                </field>
+                <field id="api_token" translate="label comment" type="obscure" sortOrder="20"
+                       showInDefault="0" showInWebsite="0" showInStore="0">
+                    <label>API Token</label>
+                    <backend_model>Quissly\Search\Model\Config\Backend\EncryptedStorefrontSetting</backend_model>
+                    <comment>The bearer token from your Quissly console. Stored encrypted.</comment>
+                </field>
+                <!-- The private key is module-generated and stored encrypted at
+                     quissly/connection/private_key; it is never entered or displayed. -->
+                <field id="actions" translate="label" type="label" sortOrder="30"
+                       showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Keys &amp; Connection</label>
+                    <frontend_model>Quissly\Search\Block\Adminhtml\Config\ActionButtons</frontend_model>
+                </field>
+            </group>
+            <group id="features" translate="label" type="text" sortOrder="20"
+                   showInDefault="1" showInWebsite="1" showInStore="0">
+                <label>Features</label>
+                <field id="enable_search" translate="label comment" type="select" sortOrder="10"
+                       showInDefault="1" showInWebsite="1" showInStore="0" canRestore="1">
+                    <backend_model>Quissly\Search\Model\Config\Backend\RequiresFirstSync</backend_model>
+                    <frontend_model>Quissly\Search\Block\Adminhtml\Config\SyncGatedToggle</frontend_model>
+                    <label>Enable AI Search</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Search interception activates only after the first full catalog sync completes for this website.</comment>
+                </field>
+                <field id="enable_overlay" translate="label comment" type="select" sortOrder="15"
+                       showInDefault="1" showInWebsite="1" showInStore="0" canRestore="1">
+                    <backend_model>Quissly\Search\Model\Config\Backend\StorefrontSetting</backend_model>
+                    <label>Immersive Search Overlay</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment><![CDATA[When on, clicking the storefront search box opens a full-width search bar at the top of a blurred page, with Quick's suggestions under it when Quick is on. Purely a presentation change - results are unaffected. Leave off to keep your theme's native search box behaviour. <strong>If your theme has no search box at all</strong>, Quissly adds a search button whatever this is set to, since it is then the only way to search; see the mount point below to say where it goes.]]></comment>
+                </field>
+                <field id="overlay_mount_selector" translate="label comment" type="text" sortOrder="16"
+                       showInDefault="1" showInWebsite="1" showInStore="0" canRestore="1">
+                    <backend_model>Quissly\Search\Model\Config\Backend\StorefrontSetting</backend_model>
+                    <label>Search button mount point</label>
+                    <comment><![CDATA[Only used when your theme has no search box. A CSS selector for an existing header control - your cart, account or language switcher - and the search button is placed just to its left, in your theme's own icon style. Leave empty to auto-detect: the cart, then the account link, then the language switcher, else a floating button at the bottom-left. Example: <code>.minicart-wrapper</code>]]></comment>
+                </field>
+                <field id="enable_voice" translate="label" type="select" sortOrder="30"
+                       showInDefault="1" showInWebsite="1" showInStore="0" canRestore="1">
+                    <backend_model>Quissly\Search\Model\Config\Backend\RequiresFirstSync</backend_model>
+                    <frontend_model>Quissly\Search\Block\Adminhtml\Config\SyncGatedToggle</frontend_model>
+                    <label>Enable Voice Search</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="enable_image" translate="label" type="select" sortOrder="40"
+                       showInDefault="1" showInWebsite="1" showInStore="0" canRestore="1">
+                    <backend_model>Quissly\Search\Model\Config\Backend\RequiresFirstSync</backend_model>
+                    <frontend_model>Quissly\Search\Block\Adminhtml\Config\SyncGatedToggle</frontend_model>
+                    <label>Enable Image Search</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="enable_quick" translate="label comment" type="select" sortOrder="20"
+                       showInDefault="1" showInWebsite="1" showInStore="0" canRestore="1">
+                    <backend_model>Quissly\Search\Model\Config\Backend\RequiresFirstSync</backend_model>
+                    <frontend_model>Quissly\Search\Block\Adminhtml\Config\SyncGatedToggle</frontend_model>
+                    <label>Quick Recommendations</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment><![CDATA[As a shopper types, show recommended products straight
+                        away in a dropdown under the search box, so they can jump to an item
+                        without running a full search. Replaces Magento's own search dropdown.]]></comment>
+                </field>
+                <field id="quick_style" translate="label comment" type="select" sortOrder="25"
+                       showInDefault="1" showInWebsite="1" showInStore="0" canRestore="1">
+                    <backend_model>Quissly\Search\Model\Config\Backend\StorefrontSetting</backend_model>
+                    <label>Quick Recommendations style</label>
+                    <source_model>Quissly\Search\Model\Config\Source\QuickStyle</source_model>
+                    <depends><field id="enable_quick">1</field></depends>
+                    <comment>A compact list of names, or larger cards with images and prices.</comment>
+                </field>
+                <field id="qchat_script_url" translate="label comment" type="text" sortOrder="90"
+                       showInDefault="0" showInWebsite="0" showInStore="0" canRestore="1">
+                    <backend_model>Quissly\Search\Model\Config\Backend\StorefrontSetting</backend_model>
+                    <label>QChat bundle URL (advanced)</label>
+                    <comment>Leave empty unless Quissly directs you elsewhere. Only files on the
+                        Quissly CDN are accepted.</comment>
+                </field>
+                <field id="enable_qchat" translate="label comment" type="select" sortOrder="50"
+                       showInDefault="1" showInWebsite="1" showInStore="0" canRestore="1">
+                    <backend_model>Quissly\Search\Model\Config\Backend\RequiresFirstSync</backend_model>
+                    <frontend_model>Quissly\Search\Block\Adminhtml\Config\SyncGatedToggle</frontend_model>
+                    <label>Enable QChat Widget</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <!-- The agent id is stored by Connect; nothing to paste. What the merchant
+                         CAN get wrong is switching this on before the chat is set up: the
+                         bubble then appears on every page in its default language and colors. -->
+                    <comment><![CDATA[<strong>Before switching this on, set up your chat in the Quissly Admin Panel (Quissly &gt; Quissly Admin Panel in the menu): languages, colors, greeting and how the widget looks.</strong> The chat bubble appears on every storefront page the moment this is saved, exactly as configured there - so configure it first, then turn it on.]]></comment>
+                </field>
+                <field id="qchat_agent_id" translate="label comment" type="text" sortOrder="60"
+                       showInDefault="0" showInWebsite="0" showInStore="0">
+                    <backend_model>Quissly\Search\Model\Config\Backend\StorefrontSetting</backend_model>
+                    <label>QChat Agent ID</label>
+                    <comment>The public QChat agent identifier - not your API token.</comment>
+                </field>
+            </group>
+            <!-- Search bar suggestions (the Shopify app's): kept in QUISSLY, not here - the
+                 fields show what Quissly holds for the website (SearchSuggestionsField) and
+                 the list field's backend writes a changed list back (SearchSuggestions). -->
+            <group id="search_suggestions" translate="label comment" type="text" sortOrder="25"
+                   showInDefault="1" showInWebsite="1" showInStore="0">
+                <label>Search bar suggestions</label>
+                <attribute type="expanded">1</attribute>
+                <comment>Example searches the search overlay types, letter by letter, into its empty search bar, in random order, so shoppers see what they can ask. They stop the moment a shopper starts typing.</comment>
+                <field id="typing_enabled" translate="label" type="select" sortOrder="10"
+                       showInDefault="1" showInWebsite="1" showInStore="0">
+                    <frontend_model>Quissly\Search\Block\Adminhtml\Config\SearchSuggestionsField</frontend_model>
+                    <label>Show typing suggestions</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="suggestions" translate="label comment" type="textarea" sortOrder="20"
+                       showInDefault="1" showInWebsite="1" showInStore="0">
+                    <backend_model>Quissly\Search\Model\Config\Backend\SearchSuggestions</backend_model>
+                    <frontend_model>Quissly\Search\Block\Adminhtml\Config\SearchSuggestionsField</frontend_model>
+                    <label>Suggestions</label>
+                    <comment>One per line, each under 80 characters. With none, the bar keeps its plain placeholder.</comment>
+                </field>
+                <!-- Drawn only while there is something to say: the list generated from the catalog
+                     (Model/Search/ShowcaseRunner) to switch to, or that one is on its way. -->
+                <field id="use_generated" translate="label" type="select" sortOrder="30"
+                       showInDefault="1" showInWebsite="1" showInStore="0">
+                    <frontend_model>Quissly\Search\Block\Adminhtml\Config\SearchSuggestionsField</frontend_model>
+                    <label>Use the generated suggestions</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+            </group>
+            <group id="catalog" translate="label" type="text" sortOrder="30"
+                   showInDefault="1" showInWebsite="1" showInStore="0">
+                <label>Catalog data</label>
+                <!-- Open on load: collapsed, the section was hard to find (2026-09-10). -->
+                <attribute type="expanded">1</attribute>
+                <field id="metadata_attributes" translate="label comment" type="multiselect" sortOrder="10"
+                       showInDefault="1" showInWebsite="1" showInStore="0" canRestore="1">
+                    <backend_model>Quissly\Search\Model\Config\Backend\CatalogAttributes</backend_model>
+                    <frontend_model>Quissly\Search\Block\Adminhtml\Config\AttributeChecklist</frontend_model>
+                    <label>Product attributes sent to Quissly</label>
+                    <source_model>Quissly\Search\Model\Config\Source\CatalogAttributes</source_model>
+                    <can_be_empty>1</can_be_empty>
+                    <comment><![CDATA[Each selected attribute travels with every product as metadata and is written into the text Quissly searches, so "linen", "merino" or a brand name match even when the description never says so. Pre-filled with the attributes shoppers usually search by; internal ones (cost, pricing, SEO, layout) are never offered. <strong>Saving a changed list re-sends your whole catalog</strong> so existing products pick it up - allow the sync a few minutes on a large store.]]></comment>
+                </field>
+            </group>
+        </section>
+    </system>
+</config>

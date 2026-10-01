@@ -1,0 +1,78 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ *
+ * Frontend-area DI: the interception plugin lives ONLY here so admin, cron and
+ * REST paths never load it.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    <type name="Magento\Search\Api\SearchInterface">
+        <plugin name="quissly_search_interception"
+                type="Quissly\Search\Plugin\Frontend\SearchPlugin"
+                sortOrder="100"/>
+    </type>
+    <!-- The results heading is built from the q parameter, which on a hand-off is
+         a routing placeholder rather than anything the shopper typed. -->
+    <type name="Magento\CatalogSearch\Block\Result">
+        <plugin name="quissly_handoff_heading"
+                type="Quissly\Search\Plugin\Frontend\SearchHeading"
+                sortOrder="100"/>
+    </type>
+    <!-- Search results link to the variant that matched, not the parent's
+         default. Declared on the CONCRETE list block: getProductUrl is defined
+         on the PRODUCT: Magento's list.phtml renders the tile link as
+         $_product->getProductUrl(), so plugging the list BLOCK's method of the
+         same name registers correctly and never runs. (Plugin inheritance is
+         not the problem - Swatches declares its image plugin on
+         AbstractProduct and it reaches ListProduct fine.) Category and cms
+         pages call the same method and are unaffected: with no hint recorded
+         the url is returned as-is. -->
+    <type name="Magento\Catalog\Model\Product">
+        <plugin name="quissly_variant_deeplink"
+                type="Quissly\Search\Plugin\Frontend\VariantLink"
+                sortOrder="100"/>
+    </type>
+    <!-- ...and the tile shows that variant's picture. Declared on the block the
+         way Magento's own Swatches\Model\Plugin\ProductImage is, which swaps
+         the same argument on the same method for filtered category pages.
+         sortOrder leaves theirs first: a swatch filter is an explicit choice by
+         the shopper, ours is an inference from a search. -->
+    <type name="Magento\Catalog\Block\Product\AbstractProduct">
+        <plugin name="quissly_variant_tile_image"
+                type="Quissly\Search\Plugin\Frontend\VariantImage"
+                sortOrder="200"/>
+    </type>
+    <!-- ...and the product page paints that variant's images on the FIRST
+         render. The fragment cannot do this: it never reaches the server, so
+         php would draw the parent and the js would correct it after paint.
+         Scoped to the gallery block alone - name, price and add-to-cart are
+         other block instances and keep describing the parent, which is the
+         product being sold. -->
+    <type name="Magento\Catalog\Block\Product\View\Gallery">
+        <plugin name="quissly_variant_first_paint"
+                type="Quissly\Search\Plugin\Frontend\VariantGallery"
+                sortOrder="100"/>
+    </type>
+    <!-- One instance per request: the plugin writes the search outcome, the
+         response observer reads it. The same applies to the variant hints -
+         the interceptor writes them, the link plugin reads them, and they only
+         make sense for the request they were recorded in. -->
+    <type name="Quissly\Search\Model\Search\SearchSignal" shared="true"/>
+    <type name="Quissly\Search\Model\Search\VariantHints" shared="true"/>
+    <!-- Search results pages are not cached while Quissly answers searches, so every search
+         reaches Quissly with the shopper's details (Plugin/Frontend/SearchPageCache). -->
+    <type name="Magento\Framework\View\Layout">
+        <plugin name="quissly_search_page_not_cached"
+                type="Quissly\Search\Plugin\Frontend\SearchPageCache"
+                sortOrder="100"/>
+    </type>
+    <type name="Quissly\Search\Model\Search\Shopper">
+        <arguments>
+            <argument name="customerSession" xsi:type="object">Magento\Customer\Model\Session\Proxy</argument>
+        </arguments>
+    </type>
+</config>

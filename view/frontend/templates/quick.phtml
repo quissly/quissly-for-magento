@@ -1,0 +1,140 @@
+<?php
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ *
+ * Quick type-ahead. Renders nothing unless the website's Quick toggle is ON.
+ *
+ * External widget script (CSP-safe: no inline JS) plus a namespaced style
+ * block. Every class is prefixed so a theme's own dropdown rules cannot reach
+ * in, and so nothing here reaches out.
+ *
+ * @var \Magento\Framework\View\Element\Template $block
+ * @var \Magento\Framework\Escaper $escaper
+ */
+$config = $block->getData('quick_config');
+if (!$config instanceof \Quissly\Search\ViewModel\QuickConfig || !$config->shouldRender()) {
+    return;
+}
+?>
+<div id="quissly-quick-config"
+     data-endpoint="<?= $escaper->escapeHtmlAttr($config->endpoint()) ?>"
+     data-results-url="<?= $escaper->escapeHtmlAttr($config->resultsUrl()) ?>"
+     data-currency="<?= $escaper->escapeHtmlAttr($config->currencySymbol()) ?>"
+     data-style="<?= $escaper->escapeHtmlAttr($config->style()) ?>"
+     data-label-all="<?= $escaper->escapeHtmlAttr(__('See all')) ?>"
+     data-label-details="<?= $escaper->escapeHtmlAttr(__('Details')) ?>"
+     hidden></div>
+<style>
+    .quissly-quick {
+        /* Quissly's accent, in one place. The tenant's widget theme carries
+           #6366f1 as primaryColor; a merchant theme can override this single
+           custom property without touching anything else. */
+        --quissly-accent: #6366f1;
+        --quissly-accent-hover: #4f52d6;
+        position: absolute; z-index: 10000; box-sizing: border-box;
+        background: #fff; border-radius: 20px; padding: 18px 8px 14px;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, .14);
+        font-family: inherit; color: #1a1a1a;
+    }
+    .quissly-quick[hidden] { display: none !important; }
+    /* Inside the search overlay: a full-width card under the bar, laid out by
+       the overlay (quissly-overlay.js) instead of measured and floated. */
+    .quissly-quick.quissly-quick--in-overlay {
+        position: static; z-index: auto;
+        padding: 22px 14px 16px; border-radius: 28px;
+        box-shadow: 0 20px 55px rgba(0, 0, 0, .3), 0 2px 8px rgba(0, 0, 0, .14);
+    }
+    .quissly-quick--in-overlay .quissly-quick__list {
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 12px; max-height: none;
+    }
+    .quissly-quick--in-overlay .quissly-quick__row { margin-bottom: 0; }
+    .quissly-quick * { box-sizing: border-box; }
+
+    .quissly-quick__header {
+        display: flex; align-items: center; justify-content: flex-end;
+        padding: 0 14px 12px;
+    }
+    .quissly-quick__all {
+        font-size: 14px; font-weight: 600; color: var(--quissly-accent);
+        text-decoration: none; white-space: nowrap;
+    }
+    .quissly-quick__all:hover { text-decoration: underline; }
+
+    /* ---- rows ---- */
+    .quissly-quick__list { max-height: 420px; overflow-y: auto; padding: 0 8px; }
+    .quissly-quick__row {
+        display: flex; align-items: center; gap: 14px;
+        padding: 10px 14px; margin-bottom: 8px; border-radius: 14px;
+        background: #F7F7F7; text-decoration: none; color: inherit;
+    }
+    .quissly-quick__row:hover { background: #F1F1F1; }
+    .quissly-quick__thumb {
+        flex: 0 0 58px; width: 58px; height: 58px; border-radius: 10px;
+        object-fit: contain; background: #fff;
+    }
+    .quissly-quick__row-body { flex: 1 1 auto; min-width: 0; }
+    .quissly-quick__row-title {
+        display: block; font-size: 14.5px; line-height: 1.3;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .quissly-quick__row-price { display: block; margin-top: 4px; font-size: 15px; font-weight: 700; }
+    .quissly-quick__chevron { flex: 0 0 20px; width: 20px; height: 20px; opacity: .5; }
+
+    /* Shown when a product has no image, or its image fails to load. */
+    .quissly-quick__noimage {
+        display: flex; align-items: center; justify-content: center;
+        background: #F1F1F1; color: #B4B4B4;
+    }
+    .quissly-quick__noimage svg { width: 45%; height: 45%; max-width: 48px; max-height: 48px; }
+    .quissly-quick__was { margin-left: 8px; font-weight: 400; color: #999; text-decoration: line-through; }
+
+    /* ---- carousel ---- */
+    .quissly-quick__frame { position: relative; padding: 0 8px; }
+    .quissly-quick__track {
+        display: flex; gap: 16px; overflow-x: auto; scroll-behavior: smooth;
+        padding: 4px; scrollbar-width: none;
+    }
+    .quissly-quick__track::-webkit-scrollbar { display: none; }
+    .quissly-quick__card {
+        flex: 0 0 232px; display: flex; flex-direction: column;
+        border: 1px solid #EDEDED; border-radius: 16px; padding: 14px;
+        cursor: pointer; background: #fff;
+    }
+    .quissly-quick__card:hover { box-shadow: 0 6px 20px rgba(0, 0, 0, .08); }
+    .quissly-quick__card-media {
+        height: 170px; display: flex; align-items: center; justify-content: center;
+        margin-bottom: 12px;
+    }
+    .quissly-quick__card-media img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .quissly-quick__card-media .quissly-quick__noimage {
+        width: 100%; height: 100%; border-radius: 10px;
+    }
+    .quissly-quick__card-title {
+        font-size: 15px; font-weight: 600; line-height: 1.35; margin-bottom: 10px;
+        display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .quissly-quick__card-price { font-size: 17px; font-weight: 700; margin-top: auto; }
+    .quissly-quick__cta {
+        display: block; margin-top: 12px; padding: 10px 12px; border-radius: 10px;
+        border: 1px solid var(--quissly-accent); background: var(--quissly-accent); color: #fff;
+        font-family: inherit; font-size: 14px; font-weight: 600;
+        text-align: center; text-decoration: none; cursor: pointer;
+    }
+    .quissly-quick__cta:hover {
+        background: var(--quissly-accent-hover);
+        border-color: var(--quissly-accent-hover); color: #fff;
+    }
+    .quissly-quick__arrow {
+        position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;
+        width: 42px; height: 42px; border-radius: 999px; border: 0;
+        background: #fff; box-shadow: 0 4px 14px rgba(0, 0, 0, .16);
+        display: flex; align-items: center; justify-content: center; cursor: pointer;
+        color: #1a1a1a;
+    }
+    .quissly-quick__arrow svg { width: 20px; height: 20px; }
+    .quissly-quick__arrow--prev { left: -6px; }
+    .quissly-quick__arrow--next { right: -6px; }
+</style>
+<script src="<?= $escaper->escapeUrl($block->getViewFileUrl('Quissly_Search::js/quissly-quick.js')) ?>" defer></script>

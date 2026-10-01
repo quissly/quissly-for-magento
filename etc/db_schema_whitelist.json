@@ -1,0 +1,42 @@
+{
+    "quissly_sync_queue": {
+        "column": {
+            "product_id": true,
+            "website_id": true,
+            "op": true,
+            "attempts": true,
+            "created_at": true,
+            "deferred_until": true,
+            "version": true
+        },
+        "index": {
+            "QUISSLY_SYNC_QUEUE_WEBSITE_CREATED": true
+        },
+        "constraint": {
+            "PRIMARY": true
+        }
+    },
+    "quissly_product_state": {
+        "column": {
+            "product_id": true,
+            "website_id": true,
+            "ingested_at": true
+        },
+        "constraint": {
+            "PRIMARY": true
+        }
+    },
+    "quissly_stock_snapshot": {
+        "column": {
+            "product_id": true,
+            "website_id": true,
+            "stock_status": true
+        },
+        "index": {
+            "QUISSLY_STOCK_SNAPSHOT_WEBSITE": true
+        },
+        "constraint": {
+            "PRIMARY": true
+        }
+    }
+}

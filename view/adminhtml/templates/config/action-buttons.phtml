@@ -1,0 +1,260 @@
+<?php
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ *
+ * Keypair + connection controls for the Quissly config section.
+ *
+ * @var \Magento\Backend\Block\Template $block
+ * @var \Magento\Framework\Escaper $escaper
+ */
+$publicKey = $block->getData('public_key');
+$websiteId = (int)$block->getData('website_id');
+$status = (array)$block->getData('status');
+$projectId = (string)$block->getData('project_id');
+$holdRemaining = (int)$block->getData('hold_remaining');
+$holdSeconds = (int)$block->getData('hold_seconds');
+$badgeColor = match ($status['state'] ?? '') {
+    'ACTIVE' => '#1f8f4d',
+    'DEGRADED' => '#c07600',
+    default => '#888',
+};
+?>
+<div class="quissly-actions" id="quissly-actions">
+    <p style="margin:0 0 8px">
+        <strong>Search interception:</strong>
+        <span style="display:inline-block;padding:1px 8px;border-radius:3px;color:#fff;
+            background:<?= /* @noEscape */ $badgeColor ?>">
+            <?= $escaper->escapeHtml($status['state'] ?? '?') ?>
+        </span>
+        <span class="note" style="margin-left:6px"><?= $escaper->escapeHtml($status['detail'] ?? '') ?></span>
+    </p>
+    <?php if (!$block->getData('is_connected')): ?>
+        <?php
+        // A store with no credentials should not be asked to generate a
+        // keypair, copy a PEM, register it somewhere and paste a token back.
+        // One click does all of it.
+        ?>
+        <?php // Flex with a gap: in a narrow config column the button wraps under the email
+              // box, and without a row gap the two touched. ?>
+        <div class="quissly-actions__row"
+             style="display:flex;flex-wrap:wrap;align-items:center;gap:14px 10px;margin-bottom:14px">
+            <label class="label" for="quissly-connect-email">
+                <?= $escaper->escapeHtml(__('Your email')) ?>
+            </label>
+            <input type="email" id="quissly-connect-email" style="min-width:280px"
+                   value="<?= $escaper->escapeHtmlAttr((string)$block->getData('suggested_email')) ?>"/>
+            <button type="button" class="action-primary scalable" id="quissly-connect">
+                <span><?= $escaper->escapeHtml(__('Connect to Quissly')) ?></span>
+            </button>
+        </div>
+        <p class="note" style="margin:0 0 12px">
+            <?= $escaper->escapeHtml(__(
+                'Creates your Quissly account for this store and connects it. There is '
+                . 'nothing to copy or paste, and nothing to set up on the Quissly side '
+                . 'afterwards.'
+            )) ?>
+            <br/>
+            <strong><?= $escaper->escapeHtml(__(
+                'This usually takes two to three minutes.'
+            )) ?></strong>
+            <?= $escaper->escapeHtml(__(
+                'Your account, search service and credentials are all created during it. '
+                . 'Leave this page open while it runs - closing or refreshing it can leave '
+                . 'the account half-created, and connecting a second time is refused.'
+            )) ?>
+        </p>
+    <?php endif; ?>
+    <?php if ($block->getData('is_connected') && $holdRemaining <= 0): ?>
+        <?php
+        // Connected stores get a read-only fact, not controls. Generating a
+        // keypair here would strand the account the products are synced to,
+        // and there is nothing for a merchant to test by hand.
+        ?>
+        <p class="note" style="margin:0 0 4px">
+            <?= $escaper->escapeHtml(__('Connected to Quissly.')) ?>
+            <?php $accountEmail = (string)$block->getData('account_email'); ?>
+            <?php if ($accountEmail !== ''): ?>
+                <?= $escaper->escapeHtml(__('Account: %1.', $accountEmail)) ?>
+            <?php endif; ?>
+            <?php if ($projectId !== ''): ?>
+                <?= $escaper->escapeHtml(__('Project id: %1 - quote this to Quissly support.', $projectId)) ?>
+            <?php endif; ?>
+        </p>
+    <?php endif; ?>
+    <?php
+    // Setup progress. Runs from the Connect click until the settling period
+    // after the response has passed - and again, part-way, after a reload
+    // during that period (hold_remaining above zero), so the merchant never
+    // sees "connected" before the service behind the account is ready.
+    ?>
+    <div id="quissly-connect-progress" hidden style="margin:4px 0 12px;max-width:440px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+            <strong><?= $escaper->escapeHtml(__('Setting up your store')) ?></strong>
+            <span id="quissly-connect-progress-pct">0%</span>
+        </div>
+        <div style="height:8px;background:#e0e0e0;border-radius:4px;overflow:hidden">
+            <div id="quissly-connect-progress-bar"
+                 style="height:100%;width:0;background:#1f8f4d;transition:width .5s linear"></div>
+        </div>
+        <p class="note" style="margin:6px 0 0">
+            <?= $escaper->escapeHtml(__(
+                'Setting up your Quissly account. This takes two to three minutes - please leave this page open.'
+            )) ?>
+        </p>
+    </div>
+    <p class="note" id="quissly-action-result" role="status" aria-live="polite"></p>
+</div>
+<script>
+(function () {
+    'use strict';
+    var websiteId = <?= (int)$websiteId ?>;
+    var resultEl = document.getElementById('quissly-action-result');
+
+    function post(url, extra, onDone) {
+        var params = new URLSearchParams();
+        params.set('form_key', window.FORM_KEY);
+        params.set('website', String(websiteId));
+        Object.keys(extra || {}).forEach(function (k) { params.set(k, extra[k]); });
+        fetch(url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: params.toString()
+        }).then(function (r) { return r.json(); })
+          .then(onDone)
+          .catch(function () {
+              onDone({
+                  ok: false,
+                  message: '<?= $escaper->escapeJs(__('Request failed - check the browser console.')) ?>'
+              });
+          });
+    }
+
+    // --- Setup progress ---------------------------------------------------
+    // Connect answers within a minute now; the search service behind the
+    // account finishes building on Quissly's side afterwards. So the bar runs
+    // from the click, paced for TARGET seconds and capped short of full, and
+    // when the response arrives whatever is left is spread evenly over HOLD
+    // more seconds before success is shown. The click time is kept in
+    // localStorage and the connect time on the server, so a reload during
+    // the hold picks the bar up where it was instead of announcing success.
+    var TARGET = 180;
+    var HOLD = <?= (int)$holdSeconds ?>;
+    var holdRemaining = <?= (int)$holdRemaining ?>;
+    var storageKey = 'quissly-connect-started-' + websiteId;
+    var progressEl = document.getElementById('quissly-connect-progress');
+    var barEl = document.getElementById('quissly-connect-progress-bar');
+    var pctEl = document.getElementById('quissly-connect-progress-pct');
+    var doneMessage = '<?= $escaper->escapeJs(__(
+        'Connected to Quissly. Start your first catalog sync from the Quissly '
+        . 'Dashboard - search switches on once it finishes.'
+    )) ?>';
+    var startedAt = null, succeededAt = null, pctAtSuccess = 0, ticker = null;
+
+    function now() {
+        return Date.now() / 1000;
+    }
+    function readStart() {
+        try {
+            return parseFloat(window.localStorage.getItem(storageKey)) || null;
+        } catch (e) {
+            return null;
+        }
+    }
+    function writeStart(t) {
+        try {
+            if (t === null) {
+                window.localStorage.removeItem(storageKey);
+            } else {
+                window.localStorage.setItem(storageKey, String(t));
+            }
+        } catch (e) {
+            // Storage blocked: the bar still runs, it just will not survive a reload.
+        }
+    }
+    function pctAt(t) {
+        if (succeededAt === null) {
+            // Capped short of full: a bar that fills with nothing to show for
+            // it reads as stuck. At 180 s pacing the cap is only reached if
+            // Quissly takes far longer than it ever should.
+            return Math.min(95, 100 * (t - startedAt) / TARGET);
+        }
+        return pctAtSuccess + (100 - pctAtSuccess) * Math.min(1, (t - succeededAt) / HOLD);
+    }
+    function render(p) {
+        barEl.style.width = p + '%';
+        pctEl.textContent = Math.floor(p) + '%';
+    }
+    function tick() {
+        var p = pctAt(now());
+        render(p);
+        if (succeededAt !== null && p >= 100) {
+            finish();
+            return;
+        }
+        ticker = window.setTimeout(tick, 500);
+    }
+    function markSuccess(at) {
+        pctAtSuccess = pctAt(at);
+        succeededAt = at;
+    }
+    function beginProgress(start, connectedAt) {
+        startedAt = start;
+        if (connectedAt !== null) {
+            markSuccess(connectedAt);
+        }
+        progressEl.hidden = false;
+        resultEl.textContent = '';
+        tick();
+    }
+    function stopProgress() {
+        window.clearTimeout(ticker);
+        progressEl.hidden = true;
+        writeStart(null);
+    }
+    function finish() {
+        stopProgress();
+        resultEl.textContent = '✅ ' + doneMessage;
+        // Credentials exist; the page must reload to show them and to drop
+        // the connect control.
+        window.setTimeout(function () { window.location.reload(); }, 1200);
+    }
+
+    if (holdRemaining > 0) {
+        // Reloaded during the hold. The server says how long is left; the
+        // click time, if this browser still has it, says where the bar was.
+        var connectedAt = now() - (HOLD - holdRemaining);
+        var start = readStart();
+        beginProgress(start !== null && start < connectedAt ? start : connectedAt, connectedAt);
+    }
+
+    var connectBtn = document.getElementById('quissly-connect');
+    if (connectBtn) {
+        connectBtn.addEventListener('click', function () {
+            var email = (document.getElementById('quissly-connect-email').value || '').trim();
+            connectBtn.disabled = true;
+            connectBtn.querySelector('span').textContent =
+                '<?= $escaper->escapeJs(__('Setting up your account...')) ?>';
+            var start = now();
+            writeStart(start);
+            beginProgress(start, null);
+            post('<?= $escaper->escapeJs($block->getData('connect_url')) ?>', {email: email}, function (data) {
+                if (data.ok) {
+                    // Credentials exist now, but success waits for the bar:
+                    // the service behind them is still being built.
+                    HOLD = data.hold_seconds || HOLD;
+                    markSuccess(now());
+                    return;
+                }
+                stopProgress();
+                connectBtn.querySelector('span').textContent =
+                    '<?= $escaper->escapeJs(__('Connect to Quissly')) ?>';
+                resultEl.textContent = '⚠️ ' + (data.message || '');
+                connectBtn.disabled = false;
+            });
+        });
+    }
+
+})();
+</script>

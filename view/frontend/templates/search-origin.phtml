@@ -1,0 +1,38 @@
+<?php
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ *
+ * Which engine answered this search. Renders ONLY on ?quissly_debug=1 - a
+ * shopper must never see it, because "Results by Magento" advertises a failure
+ * they cannot act on.
+ *
+ * @var \Magento\Framework\View\Element\Template $block
+ * @var \Magento\Framework\Escaper $escaper
+ */
+$origin = $block->getData('search_origin');
+if (!$origin instanceof \Quissly\Search\ViewModel\SearchOrigin || !$origin->shouldRender()) {
+    return;
+}
+$byQuissly = $origin->servedByQuissly();
+$skipReason = $origin->skipReason();
+?>
+<div class="quissly-origin quissly-origin--<?= $byQuissly ? 'quissly' : 'magento' ?>">
+    <?= $escaper->escapeHtml(
+        $byQuissly ? __('Results by Quissly') : __('Results by Magento search')
+    ) ?>
+    <?php if ($skipReason !== null): ?>
+        <?php $why = __('Quissly skipped this search: %1', $skipReason); ?>
+        <span class="quissly-origin__why"><?= $escaper->escapeHtml($why) ?></span>
+    <?php endif; ?>
+</div>
+<style>
+    .quissly-origin {
+        display: inline-block; margin: 0 0 14px; padding: 8px 14px;
+        border-radius: 8px; border-left: 4px solid;
+        font-size: 13px; font-weight: 600; font-family: inherit; line-height: 1.4;
+    }
+    .quissly-origin--quissly { background: #EEF0FE; border-color: #6366f1; color: #2C2F6B; }
+    .quissly-origin--magento { background: #FDF3E7; border-color: #E8A33D; color: #6B4A16; }
+    .quissly-origin__why { display: block; margin-top: 2px; font-weight: 400; }
+</style>

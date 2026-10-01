@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
+    <default>
+        <quissly>
+            <connection>
+                <environment>prod</environment>
+            </connection>
+            <features>
+                <!-- Search defaults OFF: every feature that acts on the catalogue is now
+                     refused until the first full sync completes, and a control
+                     that ships ON slips past that gate because it is never switched on.
+                     The merchant turns it on once the sync finishes.
+
+                     The overlay defaults ON, and is presentation only. It renders ONLY
+                     where Quissly search is actually serving results (OverlayConfig), so
+                     it cannot restyle a storefront that Quissly is not running - which is
+                     what the opt-in rule exists to prevent. -->
+                <enable_search>0</enable_search>
+                <enable_overlay>1</enable_overlay>
+                <enable_voice>0</enable_voice>
+                <enable_quick>0</enable_quick>
+                <quick_style>rows</quick_style>
+                <enable_image>0</enable_image>
+                <enable_qchat>0</enable_qchat>
+            </features>
+            <catalog>
+                <!-- Product attributes sent to Quissly as metadata and folded into the
+                     text it embeds. A deliberately rich list: only attributes that exist
+                     in the store are ever read, so codes a store lacks cost nothing, and
+                     a merchant edits the list in Stores > Configuration > Quissly. -->
+                <metadata_attributes>brand,manufacturer,color,size,material,pattern,style,gender,weight,country_of_manufacture,collection,fabric,fit,occasion,season,length,width,height,depth,dimensions,capacity,volume,model,series,age_group,care_instructions,composition,features,format,flavor,scent,finish,warranty,eco_collection,performance_fabric,climate,activity,category_gear,strap_bags,style_bags,style_general,style_bottom,sleeve,neckline,closure,heel_height,shoe_type,sole,lining,print,room,shape,theme,type,usage,power,wattage,voltage,connectivity,resolution,screen_size,storage,memory,operating_system,processor,battery_life,sport,team,brand_line,edition,author,publisher,language,vintage,region,origin,ingredients,allergens,diet,certification,sustainability,recyclable,handmade,limited_edition,new_arrival,best_seller</metadata_attributes>
+            </catalog>
+        </quissly>
+    </default>
+</config>

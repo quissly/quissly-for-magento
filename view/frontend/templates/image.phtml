@@ -1,0 +1,35 @@
+<?php
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ *
+ * Image-search widget mount. Emits a config host element + the
+ * external widget script (CSP-safe: no inline JS) + a minimal style block.
+ * Renders nothing when the image toggle is OFF. All labels through __().
+ *
+ * @var \Magento\Framework\View\Element\Template $block
+ * @var \Magento\Framework\Escaper $escaper
+ */
+
+/** @var \Quissly\Search\ViewModel\ImageConfig $imageConfig */
+$imageConfig = $block->getData('image_config');
+?>
+<?php if ($imageConfig && $imageConfig->shouldRender()): ?>
+<div data-quissly-image-endpoint="<?= $escaper->escapeHtmlAttr($imageConfig->endpoint()) ?>"
+     data-label-start="<?= $escaper->escapeHtmlAttr(__('Search by photo')) ?>"
+     data-label-reading="<?= $escaper->escapeHtmlAttr(__('Reading photo…')) ?>"
+     data-label-searching="<?= $escaper->escapeHtmlAttr(__('Searching…')) ?>"
+     data-label-notimage="<?= $escaper->escapeHtmlAttr(__('That file is not an image.')) ?>"
+     data-label-unreadable="<?= $escaper->escapeHtmlAttr(__('Could not read that photo.')) ?>"
+     data-label-empty="<?= $escaper->escapeHtmlAttr(__('No similar products found.')) ?>"
+     data-label-unavailable="<?= $escaper->escapeHtmlAttr(__('Image search is unavailable right now.')) ?>"
+     style="display:none"></div>
+<style>
+    .quissly-image-button {
+        margin-left: 4px; border: none; background: transparent;
+        font-size: 18px; cursor: pointer; vertical-align: middle;
+    }
+    .quissly-image-notice { margin-left: 6px; font-size: 12px; color: #666; }
+</style>
+<script src="<?= $escaper->escapeUrl($block->getViewFileUrl('Quissly_Search::js/quissly-image.js')) ?>" defer></script>
+<?php endif; ?>

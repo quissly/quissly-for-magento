@@ -1,0 +1,37 @@
+<?php
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ *
+ * The Quissly panel, embedded and already signed in.
+ *
+ * @var \Quissly\Search\Block\Adminhtml\Panel $block
+ * @var \Magento\Framework\Escaper $escaper
+ */
+$embedUrl = $block->embedUrl();
+?>
+<?php if ($embedUrl !== null): ?>
+    <div class="quissly-panel-embed">
+        <?php
+        // referrerpolicy: the bootstrap tokens live in this URL, and without it
+        // the panel's own outbound requests would carry them in a Referer
+        // header to third parties.
+        ?>
+        <iframe src="<?= $escaper->escapeUrl($embedUrl) ?>"
+                referrerpolicy="no-referrer"
+                title="<?= $escaper->escapeHtmlAttr(__('Quissly panel')) ?>"
+                style="width:100%;height:calc(100vh - 220px);min-height:600px;border:1px solid #d6d6d6;
+                       border-radius:4px;background:#fff"></iframe>
+    </div>
+<?php else: ?>
+    <div class="message message-warning">
+        <?= $escaper->escapeHtml($block->unavailableReason()) ?>
+    </div>
+    <?php if ($block->isConnected()): ?>
+        <p>
+            <a href="<?= $escaper->escapeUrl($block->directUrl()) ?>" target="_blank" rel="noopener noreferrer">
+                <?= $escaper->escapeHtml(__('Open the Quissly panel in a new tab')) ?>
+            </a>
+        </p>
+    <?php endif; ?>
+<?php endif; ?>

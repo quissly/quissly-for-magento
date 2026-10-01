@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Backend:etc/menu.xsd">
+    <menu>
+        <add id="Quissly_Search::quissly" title="Quissly" translate="title" module="Quissly_Search"
+             sortOrder="80" resource="Quissly_Search::quissly"/>
+        <!--
+            Ordered the way a merchant meets them, not by importance. Connecting
+            happens in Configuration, and nothing else here says anything until
+            that is done: a Dashboard at the top reads as the starting point and
+            then answers "not connected" to someone with no idea where
+            connecting lives. The Dashboard comes next, because it answers "did
+            that work?", and Quissly's own panel last - it is the one place that
+            is not part of setting the module up at all.
+        -->
+        <add id="Quissly_Search::configuration" title="Configuration" translate="title"
+             module="Quissly_Search" sortOrder="10" parent="Quissly_Search::quissly"
+             action="adminhtml/system_config/edit/section/quissly"
+             resource="Quissly_Search::config"/>
+        <add id="Quissly_Search::panel" title="Quissly Admin Panel" translate="title" module="Quissly_Search"
+             sortOrder="30" parent="Quissly_Search::quissly" action="quissly/panel/index"
+             resource="Quissly_Search::dashboard"/>
+        <!--
+            Menu id deliberately NOT "...::dashboard". Magento derives the menu
+            item's CSS class from the last segment of the id, and core styles
+            .item-dashboard with its own font-icon (theme-adminhtml-backend,
+            module/_menu.less). On a submenu entry that icon font is not loaded,
+            so the codepoint rendered as a missing-glyph box in front of the
+            label. The ACL resource below is unchanged and still ...::dashboard.
+        -->
+        <add id="Quissly_Search::overview" title="Dashboard" translate="title" module="Quissly_Search"
+             sortOrder="20" parent="Quissly_Search::quissly" action="quissly/dashboard/index"
+             resource="Quissly_Search::dashboard"/>
+    </menu>
+</config>

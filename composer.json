@@ -1,0 +1,56 @@
+{
+    "name": "quissly/module-search",
+    "description": "Quissly AI product discovery for Magento 2 / Adobe Commerce: AI-ranked search results with native rendering, catalog sync, and optional autocomplete.",
+    "type": "magento2-module",
+    "version": "1.0.0",
+    "license": "OSL-3.0",
+    "require": {
+        "php": "~8.2.0||~8.3.0",
+        "ext-openssl": "*",
+        "ext-json": "*",
+        "laminas/laminas-uri": "^2.9",
+        "magento/framework": ">=103.0.6 <104.0.0"
+    },
+    "require-dev": {
+        "magento/magento-coding-standard": "^33",
+        "phpunit/phpunit": "^10",
+        "phpstan/phpstan": "^1.12"
+    },
+    "autoload": {
+        "files": [
+            "registration.php"
+        ],
+        "psr-4": {
+            "Quissly\\Search\\": ""
+        }
+    },
+    "scripts": {
+        "phpcs": "phpcs --standard=Magento2 --extensions=php,phtml --ignore=vendor,tests .",
+        "golden": "php tests/golden/verify-vectors.php",
+        "test": [
+            "@phpcs",
+            "@compat",
+            "@golden",
+            "@unit",
+            "@i18n"
+        ],
+        "phpstan": "phpstan analyse --memory-limit=2G",
+        "compat": "phpcs --standard=PHPCompatibility --runtime-set testVersion 8.2-8.4 --extensions=php --ignore=vendor,tests .",
+        "unit": "phpunit -c tests/unit/phpunit.xml",
+        "i18n": "php tests/i18n/verify-dictionary.php"
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true,
+            "magento/composer-dependency-version-audit-plugin": true
+        },
+        "sort-packages": true
+    },
+    "repositories": [
+        {
+            "name": "magento",
+            "type": "composer",
+            "url": "https://repo.magento.com/"
+        }
+    ]
+}

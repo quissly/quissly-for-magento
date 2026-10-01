@@ -1,0 +1,51 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ *
+ * CSP allowances for the QChat widget (SPEC Stage 6). universal.js is served
+ * from the Quissly CDN and connects (fetch + WebSocket) to the chat
+ * middleware's host - both verified by inspecting the deployed bundle
+ * 2026-09-03. Scheme-less host sources cover https AND wss per CSP3; the
+ * explicit wss entry is belt-and-braces for older UAs.
+ *
+ * The middleware host is console.quissly.com, read out of the shipped bundle:
+ * it fetches https://console.quissly.com/api/v1/services/widget-config/<agent>
+ * and opens its socket against the same base. This file previously named a dev
+ * Cloud Run instance instead, which shipped an internal hostname to every
+ * merchant and told their browsers to permit connections to it.
+ *
+ * A dev store pointed at another middleware (see the QChat bundle override in
+ * Settings) will log CSP reports for that host. Magento sends this policy
+ * report-only by default, so nothing breaks; a dev store running CSP in
+ * restrict mode needs its own host added here.
+ */
+-->
+<csp_whitelist xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Csp:etc/csp_whitelist.xsd">
+    <policies>
+        <policy id="script-src">
+            <values>
+                <value id="quissly_cdn" type="host">cdn.quissly.com</value>
+            </values>
+        </policy>
+        <policy id="connect-src">
+            <values>
+                <value id="quissly_cdn" type="host">cdn.quissly.com</value>
+                <value id="quissly_chat_middleware" type="host">console.quissly.com</value>
+                <value id="quissly_chat_middleware_ws" type="host">wss://console.quissly.com</value>
+            </values>
+        </policy>
+        <policy id="img-src">
+            <values>
+                <value id="quissly_cdn" type="host">cdn.quissly.com</value>
+            </values>
+        </policy>
+        <policy id="font-src">
+            <values>
+                <value id="quissly_cdn" type="host">cdn.quissly.com</value>
+            </values>
+        </policy>
+    </policies>
+</csp_whitelist>

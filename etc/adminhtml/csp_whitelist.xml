@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ *
+ * The embedded Quissly panel is an IFRAME, which frame-src governs. Magento
+ * ships CSP in report-only mode, so the panel renders without this - and then
+ * goes blank, with no error and no console clue, on any store that switches to
+ * enforce. That is the failure this file exists to prevent.
+ *
+ * Admin area only: the panel is never embedded on a storefront, and allowing
+ * its host there would widen the storefront's policy for nothing.
+ *
+ * This whitelists the DEFAULT panel host. A merchant whom Quissly has directed
+ * to a different one (a regional or staging deployment, via
+ * quissly/connection/panel_url) needs their own whitelist entry for it - * csp_whitelist.xml is static XML and cannot read configuration.
+ */
+-->
+<csp_whitelist xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Csp:etc/csp_whitelist.xsd">
+    <policies>
+        <policy id="frame-src">
+            <values>
+                <value id="quissly_panel" type="host">admin.quissly.com</value>
+            </values>
+        </policy>
+    </policies>
+</csp_whitelist>

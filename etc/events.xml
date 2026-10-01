@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ *
+ * Change detection: observers ENQUEUE ONLY - never a live API call
+ * in a shopper/admin request. Coverage gaps (direct SQL, third-party writers)
+ * are owned by the reconciliation cron by design.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
+    <event name="catalog_product_save_after">
+        <observer name="quissly_product_save" instance="Quissly\Search\Observer\ProductSaveObserver"/>
+    </event>
+    <event name="catalog_product_delete_after">
+        <observer name="quissly_product_delete" instance="Quissly\Search\Observer\ProductDeleteObserver"/>
+    </event>
+    <!-- Source-verified: Product\Action dispatches only the _before variant
+         (module-catalog Model/Product/Action.php:87) - there is no _after. -->
+    <event name="catalog_product_attribute_update_before">
+        <observer name="quissly_mass_attribute_update" instance="Quissly\Search\Observer\MassUpdateObserver"/>
+    </event>
+    <!-- CSV import writes in bulk WITHOUT firing the per-product save
+         event. Without this an imported catalog waits for the
+         reconciliation cron, or for a merchant to know about full sync. -->
+    <event name="catalog_product_import_bunch_save_after">
+        <observer name="quissly_import_bunch"
+                  instance="Quissly\Search\Observer\ImportBunchObserver"/>
+    </event>
+    <event name="cataloginventory_stock_item_save_after">
+        <observer name="quissly_stock_save" instance="Quissly\Search\Observer\StockObserver"/>
+    </event>
+</config>
