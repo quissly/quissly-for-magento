@@ -12,10 +12,10 @@ use Magento\Framework\Setup\SchemaSetupInterface;
 use Magento\Framework\Setup\UninstallInterface;
 
 /**
- * Leave no trace on `module:uninstall` (SPEC Stage 7).
+ * Leave no trace on `module:uninstall`.
  *
  * Removes the module's own tables, its flags and every config row it wrote -
-     * INCLUDING the encrypted credentials, which must not survive a removal.
+ * INCLUDING the encrypted credentials, which must not survive a removal.
  *
  * Deliberately does NOT touch the merchant's catalog: nothing we store outside
  * these names belongs to us.
@@ -27,7 +27,7 @@ use Magento\Framework\Setup\UninstallInterface;
 class Uninstall implements UninstallInterface
 {
     /** Tables declared in etc/db_schema.xml. */
-    private const TABLES = ['quissly_sync_queue', 'quissly_product_state'];
+    private const TABLES = ['quissly_sync_queue', 'quissly_product_state', 'quissly_stock_snapshot'];
 
     /** Flag prefixes written by the sync, gate, health and capability models. */
     private const FLAG_PREFIXES = [
@@ -36,6 +36,9 @@ class Uninstall implements UninstallInterface
         'quissly_health_w',
         'quissly_media_gate_',
         'quissly_showcase_w',
+        'quissly_connected_at_w',
+        'quissly_sync_pending_ops_w',
+        'quissly_stock_reconcile_cursor_w',
     ];
 
     /**

@@ -9,7 +9,7 @@
       xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
     <body>
         <referenceContainer name="before.body.end">
-            <!-- QChat widget embed (SPEC Stage 6): renders nothing unless the
+            <!-- QChat widget embed: renders nothing unless the
                  website's qchat toggle is ON and an agent id is configured. -->
             <block name="quissly.qchat.embed"
                    template="Quissly_Search::qchat.phtml">

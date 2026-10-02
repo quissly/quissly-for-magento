@@ -41,40 +41,6 @@ class KeyManager
     }
 
     /**
-     * Generate a fresh RSA-2048 keypair and store it at the given scope.
-     * Returns the PUBLIC key PEM (for registration with Quissly). The private
-     * key is encrypted and written to config; the plaintext never leaves this
-     * method's scope.
-     *
-     * @param int|null $websiteId null = default scope
-     * @return string public key PEM
-     * @throws SignerException
-     */
-    public function generateAndStore(?int $websiteId = null): string
-    {
-        $resource = openssl_pkey_new([
-            'private_key_bits' => self::KEY_BITS,
-            'private_key_type' => OPENSSL_KEYTYPE_RSA,
-        ]);
-        if ($resource === false) {
-            throw new SignerException('Key generation failed: ' . (string)openssl_error_string());
-        }
-        $privatePem = '';
-        if (!openssl_pkey_export($resource, $privatePem)) {
-            throw new SignerException('Key export failed: ' . (string)openssl_error_string());
-        }
-        $details = openssl_pkey_get_details($resource);
-        if ($details === false || empty($details['key'])) {
-            throw new SignerException('Public key derivation failed.');
-        }
-        $publicPem = (string)$details['key'];
-
-        $this->store($privatePem, $publicPem, $websiteId);
-
-        return $publicPem;
-    }
-
-    /**
      * Generate a keypair WITHOUT writing it, so a failed caller strands nothing.
      *
      * Provisioning is the caller that matters: it registers the public key

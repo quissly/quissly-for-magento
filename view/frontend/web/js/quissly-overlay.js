@@ -330,9 +330,51 @@
             // shown) on stale grounds instead of re-deciding for the new width.
             trigger.hidden = false;
             var box = trigger.getBoundingClientRect();
-            var inlineVisible = !!anchor && box.width > 0 && !collides(trigger, box) && !overflows(trigger, box);
+            var inlineVisible = !!anchor && box.width > 0 && !collides(trigger, box) && !overflows(trigger, box)
+                && !covered(trigger, box);
             trigger.hidden = !!anchor && box.width > 0 && !inlineVisible;
             floating.hidden = inlineVisible;
+            if (!floating.hidden) {
+                clearFixedBars(floating);
+            }
+        }
+
+        function clearFixedBars(el) {
+            // Many mobile themes pin a bar to the bottom of the screen (account /
+            // search / cart icons) that sits over this corner. Under it, a tap meant
+            // for search opens the theme's control instead; above it (z-index), our
+            // button hides the theme's icon. So move it up to just above whatever
+            // fixed element covers its spot. Re-measured from the stylesheet
+            // position each time.
+            el.style.bottom = '';
+            var box = el.getBoundingClientRect();
+            var hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+            for (var node = hit; node && node !== document.body; node = node.parentElement) {
+                if (node === el) {
+                    return;
+                }
+                if (window.getComputedStyle(node).position === 'fixed') {
+                    var bar = node.getBoundingClientRect();
+                    el.style.bottom = Math.max(0, window.innerHeight - bar.top) + 12 + 'px';
+                    return;
+                }
+            }
+        }
+
+        function covered(el, box) {
+            // Having a box isn't being seen: a collapsed mobile menu (the cart link
+            // we sit beside often lives in one) clips or overlays its contents while
+            // they keep their size, so the shopper has no search button at all.
+            // Hit-test the centre; only judge a button inside the viewport - off-
+            // screen (e.g. the header scrolled away) says nothing about whether it
+            // is hidden.
+            var x = box.left + box.width / 2;
+            var y = box.top + box.height / 2;
+            if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight) {
+                return false;
+            }
+            var hit = document.elementFromPoint(x, y);
+            return !hit || (hit !== el && !el.contains(hit));
         }
 
         function overflows(el, box) {
@@ -360,6 +402,12 @@
             return sameLine && box.left < p.right - 1;
         }
         syncFallback();
+        // The first pass can run before the page has settled (styles, web fonts,
+        // images still moving the header), when a hit-test sees whatever was there
+        // a moment ago. Decide again once everything has loaded.
+        if (document.readyState !== 'complete') {
+            window.addEventListener('load', syncFallback);
+        }
         var resizeTimer = null;
         window.addEventListener('resize', function () {
             window.clearTimeout(resizeTimer);

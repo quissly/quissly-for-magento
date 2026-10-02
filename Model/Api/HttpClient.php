@@ -31,7 +31,7 @@ class HttpClient
     public const PATH_CATALOG = '/v1beta/catalog';
     public const X_PLATFORM = 'magento';
 
-    /** Search-family timeout budget in seconds (SPEC: 2 s strict). */
+    /** Search-family timeout budget in seconds (2 s strict). */
     private const SEARCH_TIMEOUT_SECONDS = 2;
 
     /**

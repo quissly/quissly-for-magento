@@ -11,7 +11,7 @@ use Magento\Framework\View\Element\Block\ArgumentInterface;
 use Quissly\Search\Model\Config\Settings;
 
 /**
- * View model for the QChat widget embed (SPEC Stage 6).
+ * View model for the QChat widget embed.
  *
  * The widget renders only when BOTH hold for the current store's website:
  * the qchat toggle is on (default OFF) and an agent id is configured. The

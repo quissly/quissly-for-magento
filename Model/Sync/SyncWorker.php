@@ -444,8 +444,8 @@ class SyncWorker
                 if ($subset === []) {
                     continue;
                 }
-                // One call carries at most MAX_RECORDS_PER_CALL records (SPEC
-                // §5, "batches ≤250"). Accumulating to BATCH_SIZE can overshoot
+                // One call carries at most MAX_RECORDS_PER_CALL records
+                // ("batches ≤250"). Accumulating to BATCH_SIZE can overshoot
                 // by up to one claim's worth, so the cap is enforced here
                 // rather than assumed from the batch size.
                 $chunks = $this->packer->pack($subset, self::MAX_RECORDS_PER_CALL, self::MAX_WIRE_RECORDS_PER_CALL);

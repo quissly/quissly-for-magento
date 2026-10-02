@@ -12,7 +12,7 @@ use Magento\Framework\FlagManager;
 /**
  * The per-website first-sync gate: interception never fires for a
  * website until one full catalog sync has completed there - a fresh install
- * must not serve an empty index. Stage 2's worker opens it on completion; the
+ * must not serve an empty index. The sync worker opens it on completion; the
  * quissly:gate console command controls it for development/support.
  */
 class FirstSyncGate

@@ -17,9 +17,8 @@ use Quissly\Search\Model\Health\HealthRecorder;
 use Quissly\Search\Model\Sync\FirstSyncGate;
 
 /**
- * Renders the Generate Keys + Test Connection controls and the public-key
- * display inside the system config form, aware of the current scope
- * (default vs a specific website).
+ * Renders the Connect to Quissly control inside the system config form, aware of
+ * the current scope (default vs a specific website).
  */
 class ActionButtons extends Field
 {

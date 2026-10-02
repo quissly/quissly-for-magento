@@ -2,7 +2,7 @@
     "name": "quissly/module-search",
     "description": "Quissly AI product discovery for Magento 2 / Adobe Commerce: AI-ranked search results with native rendering, catalog sync, and optional autocomplete.",
     "type": "magento2-module",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "license": "OSL-3.0",
     "require": {
         "php": "~8.2.0||~8.3.0",
@@ -25,7 +25,7 @@
         }
     },
     "scripts": {
-        "phpcs": "phpcs --standard=Magento2 --extensions=php,phtml --ignore=vendor,tests .",
+        "phpcs": "phpcs --standard=Magento2 --extensions=php,phtml --ignore=vendor,tests,Test .",
         "golden": "php tests/golden/verify-vectors.php",
         "test": [
             "@phpcs",

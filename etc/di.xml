@@ -4,7 +4,7 @@
  * Copyright © Quissly. All rights reserved.
  * See COPYING.txt for license details.
  *
- * Global DI configuration. Populated from Stage 1 (API client wiring) onward;
+ * Global DI configuration: API client wiring, sync and search services;
  * plugins/observers only - no preferences on core classes.
  */
 -->

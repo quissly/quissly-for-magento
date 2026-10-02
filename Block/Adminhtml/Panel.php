@@ -97,6 +97,11 @@ class Panel extends Template
         return $this->settings->isConfigured($this->websiteId());
     }
 
+    /**
+     * Why the panel cannot be shown, in words for the merchant.
+     *
+     * @return string
+     */
     public function unavailableReason(): string
     {
         $result = $this->session();

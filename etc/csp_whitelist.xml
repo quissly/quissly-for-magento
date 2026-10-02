@@ -4,7 +4,7 @@
  * Copyright © Quissly. All rights reserved.
  * See COPYING.txt for license details.
  *
- * CSP allowances for the QChat widget (SPEC Stage 6). universal.js is served
+ * CSP allowances for the QChat widget. universal.js is served
  * from the Quissly CDN and connects (fetch + WebSocket) to the chat
  * middleware's host - both verified by inspecting the deployed bundle
  * 2026-09-03. Scheme-less host sources cover https AND wss per CSP3; the

@@ -18,7 +18,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 /**
  * quissly:gate {status|open|close} [--website=N]
  *
- * Inspect/control the per-website first-sync gate. Stage 2's sync worker opens
+ * Inspect/control the per-website first-sync gate. The sync worker opens
  * the gate on completion; this command exists for development and support
  * (e.g. verifying interception before sync exists, or closing the gate after
  * rotating to an empty index).
