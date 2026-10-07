@@ -174,54 +174,6 @@ class HttpClient
     }
 
     /**
-     * Signed v1 catalog status check.
-     *
-     * Signs "{operationId}.{isoT}"; the SAME string is the query parameter and
-     * must survive URL-encoding byte-for-byte (rawurlencode).
-     *
-     * @param string $operationId
-     * @param string $token
-     * @param string $privateKeyPem
-     * @param string $environment
-     * @param string|null $baseUrl API host override (Settings::apiBaseUrl)
-     * @return array{status: int, body: string, content_type: string, server_time: int|null}
-     * @throws SignerException
-     */
-    public function getV1CatalogStatus(
-        string $operationId,
-        string $token,
-        string $privateKeyPem,
-        string $environment,
-        ?string $baseUrl = null
-    ): array {
-        $timestamp = $this->signer->timestampIso8601();
-        $signature = $this->signer->signV1($privateKeyPem, $operationId, $timestamp);
-        $query = 'operation_id=' . rawurlencode($operationId)
-            . '&timestamp=' . rawurlencode($timestamp)
-            . '&service=search';
-
-        $curl = $this->curlFactory->create();
-        $curl->setTimeout(self::CATALOG_TIMEOUT_SECONDS);
-        $curl->addHeader('Authorization', 'Bearer ' . $token);
-        $curl->addHeader('X-Signature', $signature);
-        $curl->addHeader('X-Environment', $environment);
-        $curl->addHeader('X-Platform', self::X_PLATFORM);
-
-        try {
-            $curl->get(($baseUrl ?: self::BASE_URL) . self::PATH_CATALOG . '?' . $query);
-        } catch (\Throwable $e) {
-            return ['status' => 0, 'body' => $e->getMessage(), 'content_type' => '', 'server_time' => null];
-        }
-
-        return [
-            'status' => (int)$curl->getStatus(),
-            'body' => (string)$curl->getBody(),
-            'content_type' => $this->header($curl, 'content-type'),
-            'server_time' => $this->serverTime($curl),
-        ];
-    }
-
-    /**
      * Case-insensitive response header lookup.
      *
      * @param Curl $curl

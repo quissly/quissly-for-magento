@@ -27,4 +27,11 @@
             <schedule>0 3 * * *</schedule>
         </job>
     </group>
+    <!-- A newer release on GitHub, checked once a day and installed (Model/Update/Updater).
+         Hourly ticks: the Updater keeps the day itself, and retries a failed check sooner. -->
+    <group id="quissly_update">
+        <job name="quissly_update" instance="Quissly\Search\Cron\UpdateCron" method="execute">
+            <schedule>41 * * * *</schedule>
+        </job>
+    </group>
 </config>

@@ -12,6 +12,7 @@ use Magento\Framework\View\Element\Block\ArgumentInterface;
 use Magento\Store\Model\StoreManagerInterface;
 use Quissly\Search\Model\Config\Settings;
 use Quissly\Search\Model\Search\SearchSuggestions;
+use Quissly\Search\Model\Search\SuggestionLanguage;
 use Quissly\Search\Model\Sync\SyncCompletion;
 
 /**
@@ -48,27 +49,36 @@ class OverlayConfig implements ArgumentInterface
      * @param SyncCompletion $completion
      * @param StoreManagerInterface $storeManager
      * @param SearchSuggestions $suggestions
+     * @param SuggestionLanguage $languages
      */
     public function __construct(
         private readonly Settings $settings,
         private readonly UrlInterface $url,
         private readonly SyncCompletion $completion,
         private readonly StoreManagerInterface $storeManager,
-        private readonly SearchSuggestions $suggestions
+        private readonly SearchSuggestions $suggestions,
+        private readonly SuggestionLanguage $languages
     ) {
     }
 
     /**
      * The search bar suggestions the overlay types into its empty bar, as JSON (an empty
-     * list keeps the plain placeholder). Cached five minutes by SearchSuggestions; part of
-     * the cached page, which a Configuration save of the list cleans.
+     * list keeps the plain placeholder): the list for this store view's language, so a
+     * shopper who switches language sees that language's. Cached five minutes by
+     * SearchSuggestions; part of the cached page (cached per store view), which a
+     * Configuration save of a list cleans.
      *
      * @return string
      */
     public function suggestionsJson(): string
     {
+        try {
+            $language = $this->languages->storeLanguage((int)$this->storeManager->getStore()->getId());
+        } catch (\Throwable $e) {
+            $language = '';
+        }
         return (string)json_encode(
-            array_values($this->suggestions->forStorefront($this->websiteId())),
+            array_values($this->suggestions->forStorefront($this->websiteId(), $language)),
             JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
         );
     }

@@ -63,6 +63,8 @@ class Provisioner
      * @param int|null $websiteId
      * @param string|null $firstName Admin's first name, for the account record
      * @param string|null $lastName Admin's last name, for the account record
+     * @param string|null $description What the store is, typed or kept on Quissly Setup; null
+     *                                 sends the module's own one-line description
      * @return array Shape: {ok: bool, api_key: string, project_id: string,
      *                        store_id: string, error: string}
      */
@@ -73,7 +75,8 @@ class Provisioner
         ?string $storeName,
         ?int $websiteId = null,
         ?string $firstName = null,
-        ?string $lastName = null
+        ?string $lastName = null,
+        ?string $description = null
     ): array {
         $curl = $this->curlFactory->create();
         $curl->setTimeout(self::TIMEOUT_SECONDS);
@@ -86,7 +89,9 @@ class Provisioner
             'platform' => 'magento',
             'service_type_slug' => 'qsearch',
             'name' => $storeName,
-            'description' => 'Magento store connected via quissly/module-search.',
+            'description' => $description !== null && trim($description) !== ''
+                ? mb_substr(trim($description), 0, 500)
+                : 'Magento store connected via quissly/module-search.',
             'environment' => $this->settings->environment($websiteId),
             // Who connected, so the account is not anonymous in the console.
             // Distinct from 'name', which is the STORE and is what the org and

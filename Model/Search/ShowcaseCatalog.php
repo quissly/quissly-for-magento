@@ -42,14 +42,19 @@ class ShowcaseCatalog
     }
 
     /**
-     * The facts for one website.
+     * The facts for one website, as one of its store views shows them.
+     *
+     * Names, categories and option labels are in that store view's language.
      *
      * @param int $websiteId
+     * @param int|null $storeId a store view of the website; null = its default one
      * @return array
      */
-    public function facts(int $websiteId): array
+    public function facts(int $websiteId, ?int $storeId = null): array
     {
-        $store = $this->storeManager->getWebsite($websiteId)->getDefaultStore();
+        $store = $storeId !== null
+            ? $this->storeManager->getStore($storeId)
+            : $this->storeManager->getWebsite($websiteId)->getDefaultStore();
         $storeId = (int)$store->getId();
 
         $collection = $this->collectionFactory->create();
@@ -73,7 +78,7 @@ class ShowcaseCatalog
             $price = (float)($product->getMinimalPrice() ?: $product->getFinalPrice() ?: $product->getPrice());
             $products[] = [
                 'title' => (string)$product->getName(),
-                'product_type' => $this->deepestCategory($product),
+                'product_type' => $this->deepestCategory($product, $storeId),
                 'category' => null,
                 'vendor' => $vendor,
                 'options' => $options,
@@ -132,13 +137,14 @@ class ShowcaseCatalog
      * The deepest category's name ("Jackets", not "Men"), '' when none.
      *
      * @param Product $product
+     * @param int $storeId the store view whose category names to read
      * @return string
      */
-    private function deepestCategory(Product $product): string
+    private function deepestCategory(Product $product, int $storeId): string
     {
         $best = '';
         $level = -1;
-        foreach ($product->getCategoryCollection()->addAttributeToSelect('name') as $category) {
+        foreach ($product->getCategoryCollection()->setStoreId($storeId)->addAttributeToSelect('name') as $category) {
             if ((int)$category->getLevel() >= 2 && $category->getName() && (int)$category->getLevel() > $level) {
                 $level = (int)$category->getLevel();
                 $best = (string)$category->getName();

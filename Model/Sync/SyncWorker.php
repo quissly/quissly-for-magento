@@ -23,9 +23,16 @@ use Quissly\Search\Model\Health\HealthRecorder;
 
 /**
  * The sync worker: claims queue batches per website, maps, routes
- * add-vs-update via the ingest marker, sends, polls, classifies per the
- * R3-verified rules, settles the queue, and opens the first-sync gate when a
- * full sync drains. Runs from cron and the quissly:sync CLI.
+ * add-vs-update via the ingest marker, sends, settles the queue on Quissly's
+ * answer to the send, and opens the first-sync gate when a full sync drains.
+ * Runs from cron and the quissly:sync CLI.
+ *
+ * Settled the way the Quissly Shopify app settles (2026-10-07): a 2xx answer to
+ * the POST/PUT/DELETE is the product delivered - marked ingested, removed from
+ * the queue, its stock snapshotted. Anything else (no answer, a timeout, any
+ * other status) leaves it queued for the next run, up to MAX_ATTEMPTS. The
+ * operation's status (GET /v1beta/catalog/{op}/{ts}) is not read: no waiting
+ * on it, nothing carried between runs, no per-item verdicts.
  */
 class SyncWorker
 {
@@ -115,14 +122,10 @@ class SyncWorker
     /** @var RecordPacker */
     private RecordPacker $packer;
 
-    /** @var PendingOperations */
-    private PendingOperations $pending;
-
     /**
      * @param QueueResource $queue
      * @param ProductMapper $mapper
      * @param CatalogClient $client
-     * @param StatusClassifier $statusClassifier
      * @param CollectionFactory $productCollectionFactory
      * @param StoreManagerInterface $storeManager
      * @param FlagManager $flagManager
@@ -135,14 +138,12 @@ class SyncWorker
      * @param IndexRefresher $refresher
      * @param StockSnapshot $snapshot
      * @param RecordPacker|null $packer
-     * @param PendingOperations|null $pending
      * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
      */
     public function __construct(
         private readonly QueueResource $queue,
         private readonly ProductMapper $mapper,
         private readonly CatalogClient $client,
-        private readonly StatusClassifier $statusClassifier,
         private readonly CollectionFactory $productCollectionFactory,
         private readonly StoreManagerInterface $storeManager,
         private readonly FlagManager $flagManager,
@@ -154,11 +155,9 @@ class SyncWorker
         private readonly PriceIndexReadiness $readiness,
         private readonly IndexRefresher $refresher,
         private readonly StockSnapshot $snapshot,
-        ?RecordPacker $packer = null,
-        ?PendingOperations $pending = null
+        ?RecordPacker $packer = null
     ) {
         $this->packer = $packer ?? new RecordPacker();
-        $this->pending = $pending ?? new PendingOperations($flagManager);
     }
 
     /**
@@ -240,19 +239,8 @@ class SyncWorker
     /**
      * The drain itself, with exclusivity already guaranteed by run().
      *
-     * Two phases, deliberately: every batch is DISPATCHED first, and only then
-     * are the verdicts collected. /v1beta/catalog is asynchronous - the POST
-     * returns an operation_id and the work happens afterwards - so waiting for
-     * each operation to reach a terminal state before sending the next made a
-     * run cost batches x ~30 s regardless of how fast the backend actually was.
-     * Sending everything first lets the operations run concurrently on
-     * Quissly's side: the run now waits for the slowest, not for the sum.
-     *
-     * The verdicts are still read. "Do not wait" is about not serialising the
-     * sends; abandoning the poll would make quissly_product_state a guess, and
-     * the ingest marker is what routes add-vs-PUT, drives the already-exists
-     * reroute and the not-found re-add. A wrong marker is exactly how a
-     * product ends up stored-but-unsearchable.
+     * Each batch is settled by Quissly's answer to its send, so a run costs
+     * one round trip per call and nothing is left waiting for the next run.
      *
      * @param int $websiteId
      * @param int $maxBatches
@@ -266,14 +254,7 @@ class SyncWorker
             $totals['pending'] = $this->queue->countPending($websiteId);
             return $totals; // leave the queue untouched until configured
         }
-        // Operations still running on Quissly's side from earlier runs: check
-        // on them first, and keep their rows out of this run's claims.
-        $resumed = $this->resumePending($websiteId);
-        $totals['ok'] += $resumed['ok'];
-        $totals['failed'] += $resumed['failed'];
-        $touchedThisRun = $this->pending->productIds($websiteId);
         $this->claimedVersions = [];
-        $inFlight = [];
         for ($i = 0; $i < $maxBatches; $i++) {
             $batch = $this->collectBatch($websiteId, $touchedThisRun);
             if ($batch === null) {
@@ -283,20 +264,11 @@ class SyncWorker
             $totals['sent'] += $result['sent'];
             $totals['ok'] += $result['ok'];
             $totals['failed'] += $result['failed'];
-            foreach ($result['in_flight'] as $operation) {
-                $inFlight[] = $operation;
-            }
             if ($result['rejected']) {
                 // The account was refused, not the payload: every further batch
-                // would be refused identically. Stop dispatching and settle
-                // whatever is already out there.
+                // would be refused identically. Stop dispatching.
                 break;
             }
-        }
-        foreach ($inFlight as $operation) {
-            $outcome = $this->settleOperation($operation, $websiteId);
-            $totals['ok'] += $outcome['ok'];
-            $totals['failed'] += $outcome['failed'];
         }
         $totals['pending'] = $this->queue->countPending($websiteId);
         $this->updateProgress(
@@ -388,7 +360,7 @@ class SyncWorker
         [$records, $variantMap, $unmappable, $demotedToDelete, $deferred] =
             $this->mapProducts($websiteId, $upsertIds);
         // Unmappable rows can never succeed - drop them from the queue with a log.
-        $this->queue->remove($unmappable, $websiteId, $this->versionsFor([], $unmappable));
+        $this->queue->remove($unmappable, $websiteId, $this->versionsFor($unmappable));
         // Deferred rows are waiting on the price indexer, not failing. They stay
         // queued and keep their attempts, so the wait cannot spend the send
         // budget; only age retires them, and that is logged separately.
@@ -410,24 +382,19 @@ class SyncWorker
     }
 
     /**
-     * Route one collected batch and put it on the wire, without waiting for it.
-     *
-     * Returns the operations it left in flight; the caller settles them once
-     * every batch of the run has been dispatched.
+     * Route one collected batch, send it and settle it on the answer.
      *
      * @param int $websiteId
      * @param array $batch
-     * @return array{sent: int, ok: int, failed: int, rejected: bool, in_flight: array}
+     * @return array{sent: int, ok: int, failed: int, rejected: bool}
      */
     private function dispatchBatch(int $websiteId, array $batch): array
     {
         $records = $batch['records'];
-        $variantMap = $batch['variant_map'];
         $ok = 0;
         $failed = 0;
         $sent = 0;
         $rejected = false;
-        $inFlight = [];
 
         if ($records !== []) {
             $ingested = $this->queue->ingestedMap(array_map('intval', array_keys($records)), $websiteId);
@@ -451,13 +418,10 @@ class SyncWorker
                 $chunks = $this->packer->pack($subset, self::MAX_RECORDS_PER_CALL, self::MAX_WIRE_RECORDS_PER_CALL);
                 foreach ($chunks as $chunk) {
                     $sent += count($chunk);
-                    $result = $this->dispatch($method, $chunk, $variantMap, $websiteId);
+                    $result = $this->dispatch($method, $chunk, $websiteId);
                     $ok += $result['ok'];
                     $failed += $result['failed'];
                     $rejected = $rejected || $result['rejected'];
-                    if ($result['in_flight'] !== null) {
-                        $inFlight[] = $result['in_flight'];
-                    }
                 }
             }
         }
@@ -477,7 +441,6 @@ class SyncWorker
             'ok' => $ok,
             'failed' => $failed,
             'rejected' => $rejected,
-            'in_flight' => $inFlight,
         ];
     }
 
@@ -650,57 +613,20 @@ class SyncWorker
     }
 
     /**
-     * The flags sent for the parents that settled ok, and their variants.
+     * The queue versions to settle these ids at: this run's claims.
      *
-     * Operations kept in flight before flags were persisted carry none;
-     * those products get a snapshot on their next send.
+     * Ids not claimed this run settle unconditionally, as they did before
+     * versions existed.
      *
-     * @param array $operation
-     * @param int[] $okIds
-     * @param array $variantMap wire id => queued (parent) id
-     * @return array<int, int>
-     */
-    private function sentStock(array $operation, array $okIds, array $variantMap): array
-    {
-        $stock = isset($operation['stock']) && is_array($operation['stock']) ? $operation['stock'] : [];
-        if ($stock === []) {
-            return [];
-        }
-        $parents = array_flip(array_map('intval', $okIds));
-        $out = [];
-        foreach ($okIds as $id) {
-            if (isset($stock[(int)$id])) {
-                $out[(int)$id] = (int)$stock[(int)$id];
-            }
-        }
-        foreach ($variantMap as $wireId => $parentId) {
-            if (isset($parents[(int)$parentId]) && isset($stock[(int)$wireId])) {
-                $out[(int)$wireId] = (int)$stock[(int)$wireId];
-            }
-        }
-        return $out;
-    }
-
-    /**
-     * The queue versions to settle these ids at.
-     *
-     * From the operation when it carries them (kept in flight on an earlier
-     * run), else from this run's claims. Ids known to neither settle
-     * unconditionally, as they did before versions existed.
-     *
-     * @param array $operation
      * @param int[] $productIds
      * @return array<int, int>
      */
-    private function versionsFor(array $operation, array $productIds): array
+    private function versionsFor(array $productIds): array
     {
-        $known = isset($operation['versions']) && is_array($operation['versions'])
-            ? $operation['versions']
-            : $this->claimedVersions;
         $out = [];
         foreach ($productIds as $id) {
-            if (isset($known[(int)$id])) {
-                $out[(int)$id] = (int)$known[(int)$id];
+            if (isset($this->claimedVersions[(int)$id])) {
+                $out[(int)$id] = $this->claimedVersions[(int)$id];
             }
         }
         return $out;
@@ -842,47 +768,38 @@ class SyncWorker
     }
 
     /**
-     * Send one mutation batch and return without waiting for its verdicts.
+     * Send one mutation batch and settle it on Quissly's answer.
      *
      * @param string $method POST|PUT
      * @param array $records Map of id => record
-     * @param array $variantMap Wire id => queued id
      * @param int $websiteId
-     * @return array{ok: int, failed: int, rejected: bool, in_flight: array|null}
+     * @return array{ok: int, failed: int, rejected: bool}
      */
-    private function dispatch(string $method, array $records, array $variantMap, int $websiteId): array
+    private function dispatch(string $method, array $records, int $websiteId): array
     {
         try {
-            return $this->dispatchSigned($method, $records, $variantMap, $websiteId);
+            return $this->dispatchSigned($method, $records, $websiteId);
         } catch (SignerException $e) {
-            $failure = $this->signerFailure($websiteId, $e);
-            return [
-                'ok' => $failure['ok'],
-                'failed' => $failure['failed'],
-                'rejected' => $failure['rejected'],
-                'in_flight' => null,
-            ];
+            return $this->signerFailure($websiteId, $e);
         }
     }
 
     /**
      * The body of dispatch(); signing failures are the caller's to handle.
      *
-     * Everything that can be decided from the POST alone is decided here - a
-     * refusal, a rate-limit, a transport failure. Only an accepted operation
-     * goes into the in-flight list for the settle phase.
+     * Everything is decided from the answer to the send: a refusal, a
+     * rate-limit, a failure (no answer, a timeout, any non-2xx) or delivered.
      *
      * @param string $method POST|PUT
      * @param array $records Map of id => record
-     * @param array $variantMap Wire id => queued id
      * @param int $websiteId
-     * @return array{ok: int, failed: int, rejected: bool, in_flight: array|null}
+     * @return array{ok: int, failed: int, rejected: bool}
      * @throws SignerException
      */
-    private function dispatchSigned(string $method, array $records, array $variantMap, int $websiteId): array
+    private function dispatchSigned(string $method, array $records, int $websiteId): array
     {
         $queuedIds = array_map('intval', array_keys($records));
-        $settled = ['ok' => 0, 'failed' => 0, 'rejected' => false, 'in_flight' => null];
+        $settled = ['ok' => 0, 'failed' => 0, 'rejected' => false];
         // Counts only, never values: enough to read from the log which way the
         // stock flags went, without logging a record (2026-09-11).
         $outOfStock = 0;
@@ -912,311 +829,36 @@ class SyncWorker
                 '[quissly] catalog sync rejected (%s) - batch left queued, attempts untouched',
                 $send['code']
             ));
-            return ['ok' => 0, 'failed' => 0, 'rejected' => true, 'in_flight' => null];
+            return ['ok' => 0, 'failed' => 0, 'rejected' => true];
         }
         if ($send['code'] === ResponseClassifier::RATE_LIMITED) {
             // Back off: leave rows queued WITHOUT burning an attempt.
             $this->logger->info('[quissly] rate-limited - backing off, batch left queued');
             return $settled;
         }
-        if ($send['code'] === ResponseClassifier::OK) {
-            // Accepted: clear any standing rejection so the admin banner goes away
-            // once the account is sorted out. Nothing else clears this channel.
-            $this->health->recordSuccess($websiteId);
-        }
-        if ($send['code'] !== ResponseClassifier::OK || $send['operation_id'] === null) {
+        if ($send['code'] !== ResponseClassifier::OK) {
+            // No answer, a timeout or any other status: the rows go again next run.
             $dropped = $this->queue->bumpAttempts($queuedIds, $websiteId, self::MAX_ATTEMPTS);
             $this->logDropped($dropped, $websiteId);
-            return ['ok' => 0, 'failed' => count($queuedIds), 'rejected' => false, 'in_flight' => null];
+            return ['ok' => 0, 'failed' => count($queuedIds), 'rejected' => false];
         }
-        return [
-            'ok' => 0,
-            'failed' => 0,
-            'rejected' => false,
-            'in_flight' => [
-                'operation_id' => $send['operation_id'],
-                'method' => $method,
-                'records' => $records,
-                'variant_map' => $variantMap,
-                'versions' => $this->versionsFor([], $queuedIds),
-                'stock' => $this->stockFlags($records),
-            ],
-        ];
-    }
-
-    /**
-     * Send one mutation batch and wait for its verdicts.
-     *
-     * The synchronous path, kept for the two self-heal re-sends inside
-     * settleOperationSigned(): those are corrections to a batch already being
-     * settled, so there is nothing left to overlap them with.
-     *
-     * @param string $method POST|PUT
-     * @param array $records Map of id => record
-     * @param array $variantMap Wire id => queued id
-     * @param int $websiteId
-     * @return array{ok: int, failed: int}
-     */
-    private function sendAndSettle(string $method, array $records, array $variantMap, int $websiteId): array
-    {
-        $result = $this->dispatch($method, $records, $variantMap, $websiteId);
-        if ($result['in_flight'] === null) {
-            return ['ok' => $result['ok'], 'failed' => $result['failed']];
-        }
-        return $this->settleOperation($result['in_flight'], $websiteId);
-    }
-
-    /**
-     * Poll one in-flight operation, classify per R3 rules, settle the queue.
-     *
-     * @param array $operation
-     * @param int $websiteId
-     * @return array{ok: int, failed: int}
-     */
-    private function settleOperation(array $operation, int $websiteId): array
-    {
-        try {
-            return $this->settleOperationSigned($operation, $websiteId);
-        } catch (SignerException $e) {
-            // Status polling signs too, so the key can fail here as well as on
-            // the send. Same handling: rows stay queued, attempts untouched.
-            $failure = $this->signerFailure($websiteId, $e);
-            return ['ok' => $failure['ok'], 'failed' => $failure['failed']];
-        }
-    }
-
-    /**
-     * The body of settleOperation(); signing failures are the caller's to handle.
-     *
-     * @param array $operation
-     * @param int $websiteId
-     * @return array{ok: int, failed: int}
-     * @throws SignerException
-     */
-    private function settleOperationSigned(array $operation, int $websiteId): array
-    {
-        $status = $this->client->pollStatus($operation['operation_id'], $websiteId === 0 ? null : $websiteId);
-        if ($status === null) {
-            return $this->keepInFlight($operation, $websiteId);
-        }
-        if ($this->statusClassifier->isCancelled($status)) {
-            return $this->failOperation($operation, $websiteId);
-        }
-        return $this->applyVerdicts($operation, $status, $websiteId);
-    }
-
-    /**
-     * The poll budget ran out with the operation still running.
-     *
-     * That used to count the batch failed and requeue it, so a slow ingest (a
-     * fresh project embedding ten images per product) was sent again every
-     * few minutes, each copy queued behind the last on Quissly's side, until
-     * the rows burned their attempts while the first copy was still being
-     * processed. Now the operation is remembered and its rows stay queued
-     * but untouchable; the next run checks on it before sending anything.
-     *
-     * @param array $operation
-     * @param int $websiteId
-     * @return array{ok: int, failed: int}
-     */
-    private function keepInFlight(array $operation, int $websiteId): array
-    {
-        $queuedIds = $this->queuedIdsOf($operation);
-        $this->pending->add(
-            $websiteId,
-            (string)$operation['operation_id'],
-            (string)$operation['method'],
-            $queuedIds,
-            (array)$operation['variant_map'],
-            $this->versionsFor($operation, $queuedIds),
-            isset($operation['stock']) && is_array($operation['stock']) ? $operation['stock'] : []
-        );
+        // Accepted: clear any standing rejection so the admin banner goes away
+        // once the account is sorted out. Nothing else clears this channel.
+        $this->health->recordSuccess($websiteId);
+        // Delivered: in Quissly now, so its next change goes as an update; off the
+        // queue at the version claimed (a save during the send stays queued); and
+        // the stock flags as SENT, which the stock reconcile cron compares against.
+        $this->queue->markIngested($queuedIds, $websiteId);
+        $this->queue->remove($queuedIds, $websiteId, $this->versionsFor($queuedIds));
+        $this->snapshot->record($this->stockFlags($records), $websiteId);
         $this->logger->info(sprintf(
-            '[quissly] op=%s still running on Quissly - kept in flight, %d products stay queued; '
-            . 'checked again next run',
-            $operation['operation_id'],
+            '[quissly] %s accepted op=%s website=%d products=%d',
+            $method,
+            (string)($send['operation_id'] ?? '-'),
+            $websiteId,
             count($queuedIds)
         ));
-        return ['ok' => 0, 'failed' => 0];
-    }
-
-    /**
-     * The rows go round again, up to MAX_ATTEMPTS.
-     *
-     * Quissly cancelled the operation, or it never finished within the wait.
-     *
-     * @param array $operation
-     * @param int $websiteId
-     * @return array{ok: int, failed: int}
-     */
-    private function failOperation(array $operation, int $websiteId): array
-    {
-        $queuedIds = $this->queuedIdsOf($operation);
-        $dropped = $this->queue->bumpAttempts($queuedIds, $websiteId, self::MAX_ATTEMPTS);
-        $this->logDropped($dropped, $websiteId);
-        return ['ok' => 0, 'failed' => count($queuedIds)];
-    }
-
-    /**
-     * The queued product ids an operation carries, whether it was just sent
-     * (records in hand) or resumed from an earlier run (ids only).
-     *
-     * @param array $operation
-     * @return int[]
-     */
-    private function queuedIdsOf(array $operation): array
-    {
-        if (isset($operation['product_ids'])) {
-            return array_map('intval', (array)$operation['product_ids']);
-        }
-        return array_map('intval', array_keys((array)($operation['records'] ?? [])));
-    }
-
-    /**
-     * The operation's records, rebuilt from the catalog for a resumed one.
-     *
-     * @param array $operation
-     * @param int $websiteId
-     * @return array
-     */
-    private function recordsOf(array $operation, int $websiteId): array
-    {
-        if (!empty($operation['records'])) {
-            return $operation['records'];
-        }
-        [$records] = $this->mapProducts($websiteId, $this->queuedIdsOf($operation));
-        return $records;
-    }
-
-    /**
-     * Check on operations kept from earlier runs: one request each, no
-     * waiting. A terminal verdict settles the rows, a cancelled one fails
-     * them, anything still running stays kept unless it has been running for
-     * MAX_INDEX_WAIT_SECONDS.
-     *
-     * @param int $websiteId
-     * @return array{ok: int, failed: int}
-     */
-    private function resumePending(int $websiteId): array
-    {
-        $totals = ['ok' => 0, 'failed' => 0];
-        foreach ($this->pending->all($websiteId) as $operation) {
-            $operationId = (string)$operation['operation_id'];
-            try {
-                $status = $this->client->checkStatus($operationId, $websiteId === 0 ? null : $websiteId);
-                $state = strtolower((string)($status['status'] ?? ''));
-                if ($status !== null && in_array($state, StatusClassifier::TERMINAL_STATES, true)) {
-                    $outcome = $this->statusClassifier->isCancelled($status)
-                        ? $this->failOperation($operation, $websiteId)
-                        : $this->applyVerdicts($operation, $status, $websiteId);
-                    $this->pending->remove($websiteId, $operationId);
-                    $this->logger->info(sprintf(
-                        '[quissly] resumed op=%s: %s (ok=%d failed=%d)',
-                        $operationId,
-                        $state,
-                        $outcome['ok'],
-                        $outcome['failed']
-                    ));
-                    $totals['ok'] += $outcome['ok'];
-                    $totals['failed'] += $outcome['failed'];
-                    continue;
-                }
-            } catch (SignerException $e) {
-                $failure = $this->signerFailure($websiteId, $e);
-                $totals['failed'] += $failure['failed'];
-                return $totals;
-            }
-            if (time() - (int)($operation['sent_at'] ?? time()) > self::MAX_INDEX_WAIT_SECONDS) {
-                $outcome = $this->failOperation($operation, $websiteId);
-                $this->pending->remove($websiteId, $operationId);
-                $this->logger->info(sprintf(
-                    '[quissly] op=%s never finished within %ds - giving up, its rows go round again',
-                    $operationId,
-                    self::MAX_INDEX_WAIT_SECONDS
-                ));
-                $totals['failed'] += $outcome['failed'];
-            }
-            // Still running: leave it kept; its rows stay excluded from claims.
-        }
-        return $totals;
-    }
-
-    /**
-     * Classify a terminal operation per R3 rules and settle the queue.
-     *
-     * @param array $operation
-     * @param array $status
-     * @param int $websiteId
-     * @return array{ok: int, failed: int}
-     * @throws SignerException
-     */
-    private function applyVerdicts(array $operation, array $status, int $websiteId): array
-    {
-        $method = (string)$operation['method'];
-        $variantMap = (array)$operation['variant_map'];
-        $queuedIds = $this->queuedIdsOf($operation);
-
-        $verdicts = $this->statusClassifier->rollUp($status, $variantMap);
-        $this->logVerdicts($method, $status, $verdicts, $queuedIds);
-        $okIds = [];
-        $failedIds = [];
-        $rerouteIds = [];
-        $notFoundIds = [];
-        foreach ($queuedIds as $id) {
-            $verdict = $verdicts[(string)$id] ?? StatusClassifier::ITEM_FAILED;
-            if ($verdict === StatusClassifier::ITEM_OK) {
-                $okIds[] = $id;
-            } elseif ($verdict === StatusClassifier::ITEM_ALREADY_EXISTS) {
-                $rerouteIds[] = $id;
-            } elseif ($verdict === StatusClassifier::ITEM_NOT_FOUND) {
-                $notFoundIds[] = $id;
-            } else {
-                $failedIds[] = $id;
-            }
-        }
-
-        // Self-heal (update path): "doesn't exist" → the index lost it (external
-        // delete, drift) - clear the marker and re-send as an ADD right now.
-        if ($notFoundIds !== [] && $method === 'PUT') {
-            $this->queue->clearIngested($notFoundIds, $websiteId);
-            $readd = array_intersect_key(
-                $this->recordsOf($operation, $websiteId),
-                array_flip(array_map('strval', $notFoundIds))
-            );
-            $outcomeReadd = $this->sendAndSettle('POST', $readd, $variantMap, $websiteId);
-            $okIds = array_merge($okIds, []);
-        } elseif ($notFoundIds !== []) {
-            $failedIds = array_merge($failedIds, $notFoundIds);
-            $notFoundIds = [];
-        }
-
-        // Self-heal: "already exists" on the add path → mark ingested and re-route to PUT.
-        if ($rerouteIds !== [] && $method === 'POST') {
-            $this->queue->markIngested($rerouteIds, $websiteId);
-            $rerouteRecords = array_intersect_key(
-                $this->recordsOf($operation, $websiteId),
-                array_flip(array_map('strval', $rerouteIds))
-            );
-            $outcome = $this->sendAndSettle('PUT', $rerouteRecords, $variantMap, $websiteId);
-            $okIds = array_merge($okIds, []);
-            $ok = count($okIds) + $outcome['ok'];
-            $failedCount = count($failedIds) + $outcome['failed'];
-        } else {
-            $okIds = array_merge($okIds, $rerouteIds); // PUT-path "already exists" = fine
-            $ok = count($okIds) + (isset($outcomeReadd) ? $outcomeReadd['ok'] : 0);
-            $failedCount = count($failedIds) + (isset($outcomeReadd) ? $outcomeReadd['failed'] : 0);
-        }
-
-        $this->queue->markIngested($okIds, $websiteId);
-        $this->queue->remove($okIds, $websiteId, $this->versionsFor($operation, $okIds));
-        // What Quissly now holds for these products and their variants, as
-        // SENT: the stock reconcile cron compares Magento's answer against it.
-        $this->snapshot->record($this->sentStock($operation, $okIds, $variantMap), $websiteId);
-        if ($failedIds !== []) {
-            $dropped = $this->queue->bumpAttempts($failedIds, $websiteId, self::MAX_ATTEMPTS);
-            $this->logDropped($dropped, $websiteId);
-        }
-        return ['ok' => $ok, 'failed' => $failedCount];
+        return ['ok' => count($queuedIds), 'failed' => 0, 'rejected' => false];
     }
 
     /**
@@ -1266,12 +908,9 @@ class SyncWorker
             $this->logDropped($dropped, $websiteId);
             return ['ok' => 0, 'failed' => count($deleteIds)];
         }
-        // No terminal poll: the delete operation's status was already discarded
-        // unread (delete is idempotent, so there is no verdict to act on), and
-        // waiting ~30 s for a value nobody reads is the exact serialisation
-        // this run is built to avoid.
+        // A 2xx is the delete delivered, as for every other send.
         $this->queue->clearIngested($deleteIds, $websiteId);
-        $this->queue->remove($deleteIds, $websiteId, $this->versionsFor([], $deleteIds));
+        $this->queue->remove($deleteIds, $websiteId, $this->versionsFor($deleteIds));
         $this->snapshot->forget($deleteIds, $websiteId);
         return ['ok' => count($deleteIds), 'failed' => 0];
     }
@@ -1474,42 +1113,5 @@ class SyncWorker
                 implode(',', $dropped)
             ));
         }
-    }
-
-    /**
-     * Diagnostic verdict summary per settled operation.
-     *
-     * Counts + one sample failure reason - never payloads.
-     *
-     * @param string $method
-     * @param array $status
-     * @param array $verdicts
-     * @param int[] $queuedIds
-     * @return void
-     */
-    private function logVerdicts(string $method, array $status, array $verdicts, array $queuedIds): void
-    {
-        $counts = ['ok' => 0, 'already_exists' => 0, 'failed' => 0, 'unreported' => 0];
-        foreach ($queuedIds as $id) {
-            $verdict = $verdicts[(string)$id] ?? 'unreported';
-            $counts[$verdict] = ($counts[$verdict] ?? 0) + 1;
-        }
-        $sampleReason = '';
-        foreach ((array)($status['data'] ?? []) as $item) {
-            if (is_array($item) && strtolower((string)($item['status'] ?? '')) !== 'successful') {
-                $sampleReason = (string)($item['reason'] ?? '');
-                break;
-            }
-        }
-        $this->logger->info(sprintf(
-            '[quissly] verdicts %s server=%s ok=%d exists=%d failed=%d unreported=%d sample_reason=%s',
-            $method,
-            (string)($status['status'] ?? '?'),
-            $counts['ok'],
-            $counts['already_exists'],
-            $counts['failed'],
-            $counts['unreported'],
-            $sampleReason !== '' ? $sampleReason : '-'
-        ));
     }
 }

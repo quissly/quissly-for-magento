@@ -178,20 +178,14 @@
                     <label>Show typing suggestions</label>
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
                 </field>
+                <!-- One list per store language, edited as pills with a Language select
+                     (SearchSuggestionsField + web/js/config-suggestions.js). -->
                 <field id="suggestions" translate="label comment" type="textarea" sortOrder="20"
                        showInDefault="1" showInWebsite="1" showInStore="0">
                     <backend_model>Quissly\Search\Model\Config\Backend\SearchSuggestions</backend_model>
                     <frontend_model>Quissly\Search\Block\Adminhtml\Config\SearchSuggestionsField</frontend_model>
                     <label>Suggestions</label>
-                    <comment>One per line, each under 80 characters. With none, the bar keeps its plain placeholder.</comment>
-                </field>
-                <!-- Drawn only while there is something to say: the list generated from the catalog
-                     (Model/Search/ShowcaseRunner) to switch to, or that one is on its way. -->
-                <field id="use_generated" translate="label" type="select" sortOrder="30"
-                       showInDefault="1" showInWebsite="1" showInStore="0">
-                    <frontend_model>Quissly\Search\Block\Adminhtml\Config\SearchSuggestionsField</frontend_model>
-                    <label>Use the generated suggestions</label>
-                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Each under 80 characters. Click × to remove one.</comment>
                 </field>
             </group>
             <group id="catalog" translate="label" type="text" sortOrder="30"

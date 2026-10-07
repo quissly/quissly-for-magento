@@ -1,0 +1,17 @@
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ *
+ * The Quissly entry in the admin's left menu shows Quissly's own mark (the speech-bubble q,
+ * as the Shopify app's icon) instead of the icon font's default hexagon. Drawn as a mask in the
+ * link's text colour, so it greys and lights up exactly like Magento's own menu icons.
+ */
+.admin__menu #menu-quissly-search-quissly > a:before {
+    content: '';
+    width: 2.6rem;
+    height: 2.2rem;
+    margin: 0 auto .3rem;
+    background-color: currentColor;
+    -webkit-mask: url('../images/quissly-mark.svg') center / contain no-repeat;
+    mask: url('../images/quissly-mark.svg') center / contain no-repeat;
+}

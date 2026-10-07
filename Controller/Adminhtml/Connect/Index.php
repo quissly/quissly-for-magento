@@ -25,6 +25,8 @@ use Quissly\Search\Model\Api\Provisioner;
 use Quissly\Search\Model\Api\ServiceDirectory;
 use Quissly\Search\Model\Config\Settings;
 use Quissly\Search\Model\Connect\ConnectHold;
+use Quissly\Search\Model\Connect\Onboarding;
+use Quissly\Search\Model\Connect\SetupInput;
 use Quissly\Search\Model\Crypto\KeyManager;
 
 /**
@@ -57,6 +59,8 @@ class Index extends Action implements HttpPostActionInterface
      * @param JsonFactory $jsonFactory
      * @param AuthSession $authSession
      * @param ConnectHold $hold
+     * @param Onboarding $onboarding
+     * @param SetupInput $input
      */
     public function __construct(
         Action\Context $context,
@@ -71,7 +75,9 @@ class Index extends Action implements HttpPostActionInterface
         private readonly TypeListInterface $cacheTypeList,
         private readonly JsonFactory $jsonFactory,
         private readonly AuthSession $authSession,
-        private readonly ConnectHold $hold
+        private readonly ConnectHold $hold,
+        private readonly Onboarding $onboarding,
+        private readonly SetupInput $input
     ) {
         parent::__construct($context);
     }
@@ -97,11 +103,29 @@ class Index extends Action implements HttpPostActionInterface
             ]);
         }
 
+        // Asked before anything is stored: a store with no credentials anywhere
+        // is new, and carries on in Quissly Setup once this succeeds.
+        $inSetup = !$this->onboarding->isComplete();
+
+        // What Quissly's backend accepts (the Shopify app's email check), so a bad address is
+        // refused here rather than half-way through creating the account.
         $email = trim((string)$this->getRequest()->getParam('email'));
-        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $problem = $this->input->emailProblem($email);
+        if ($problem !== '') {
+            $messages = [
+                'required' => __('Enter the email address for your Quissly account.'),
+                'too_long' => __('Email address is too long.'),
+                'public' => __('Use an address on a real, public domain.'),
+            ];
             return $result->setData([
                 'ok' => false,
-                'message' => (string)__('Enter the email address for your Quissly account.'),
+                'message' => (string)($messages[$problem] ?? __('Enter a valid email address, like name@example.com.')),
+            ]);
+        }
+        if (!$this->input->isNameValid((string)$this->getRequest()->getParam('store_name'))) {
+            return $result->setData([
+                'ok' => false,
+                'message' => (string)__('Use letters, numbers, spaces and hyphens in the store name.'),
             ]);
         }
 
@@ -148,15 +172,19 @@ class Index extends Action implements HttpPostActionInterface
             $domain,
             $email,
             $keypair['public'],
-            // The merchant's trading name where they have one, else null so
-            // Quissly names the account from the domain. Sending Magento's
-            // website label made every account "Main Website".
-            $this->settings->storeDisplayName($websiteId),
+            // The name typed on Quissly Setup, else the merchant's trading
+            // name where they have one, else null so Quissly names the account
+            // from the domain. Sending Magento's website label made every
+            // account "Main Website".
+            $this->storeName($websiteId),
             $websiteId,
             // Who connected. The account is a person's to answer for, and an
             // email alone makes every tenant anonymous in the console.
             $this->adminName('first'),
-            $this->adminName('last')
+            $this->adminName('last'),
+            // The description on Quissly Setup (drafted from the store, edited by the
+            // merchant); Configuration's Connect sends none.
+            trim((string)$this->getRequest()->getParam('description')) ?: null
         );
 
         if (!$response['ok']) {
@@ -181,6 +209,9 @@ class Index extends Action implements HttpPostActionInterface
         // the config page holds its progress bar and the Dashboard refuses a
         // first sync until the service can take one (ConnectHold).
         $this->hold->start($websiteId ?? 0);
+        if ($inSetup) {
+            $this->onboarding->connected();
+        }
 
         // The credentials above went to storage through the config WRITER, but
         // everything that reads them - Settings, and so ServiceDirectory and the
@@ -272,10 +303,20 @@ class Index extends Action implements HttpPostActionInterface
     }
 
     /**
-     * Website id from the request; null means default scope.
+     * The store name the account is created with; null lets Quissly use the domain.
      *
-     * @return int|null
+     * @param int|null $websiteId
+     * @return string|null
      */
+    private function storeName(?int $websiteId): ?string
+    {
+        $typed = trim((string)$this->getRequest()->getParam('store_name'));
+        if ($typed !== '') {
+            return mb_substr($typed, 0, 100);
+        }
+        return $this->settings->storeDisplayName($websiteId);
+    }
+
     /**
      * One half of the signed-in admin's name, or null when it is not set.
      *

@@ -1,0 +1,59 @@
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ *
+ * Configuration > Quissly > Search bar suggestions: the language select, the suggestions as
+ * removable pills (Quissly's indigo, as the Shopify app's pills) and the add row.
+ */
+.q-suggestions { max-width: 640px; }
+.q-suggestions__language { margin-bottom: 14px; }
+.q-suggestions__language label { display: block; font-weight: 600; margin-bottom: 6px; }
+.q-suggestions__language select { min-width: 240px; }
+.q-suggestions .q-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-height: 38px;
+    padding: 10px;
+    border: 1px solid #adadad;
+    border-radius: 4px;
+    background: #fff;
+}
+.q-suggestions .q-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    padding: 4px 4px 4px 12px;
+    border-radius: 999px;
+    background: #f1f1fa;
+    border: 1px solid #d4d4ef;
+    color: #3d3d9b;
+    font-size: 13px;
+    line-height: 1.4;
+}
+.q-suggestions .q-pill__text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.q-suggestions .q-pill__remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: #3d3d9b;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: none;
+}
+.q-suggestions .q-pill__remove:hover,
+.q-suggestions .q-pill__remove:focus { background: #d4d4ef; color: #1d1e1e; }
+.q-suggestions .q-pills__empty { color: #6d6d6d; font-size: 13px; align-self: center; }
+.q-suggestions__add { display: flex; gap: 8px; margin-top: 10px; }
+.q-suggestions__add input { flex: 1; }
+.q-suggestions__count.is-over { color: #b32d2e; }
+.q-suggestions__error { color: #b32d2e; margin-top: 6px; }
+.q-suggestions [hidden] { display: none !important; }

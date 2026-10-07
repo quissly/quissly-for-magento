@@ -8,6 +8,7 @@ declare(strict_types=1);
 namespace Quissly\Search\Cron;
 
 use Magento\Store\Model\StoreManagerInterface;
+use Quissly\Search\Model\Connect\Onboarding;
 use Quissly\Search\Model\Sync\SyncWorker;
 
 /**
@@ -18,10 +19,12 @@ class SyncCron
     /**
      * @param SyncWorker $worker
      * @param StoreManagerInterface $storeManager
+     * @param Onboarding $onboarding
      */
     public function __construct(
         private readonly SyncWorker $worker,
-        private readonly StoreManagerInterface $storeManager
+        private readonly StoreManagerInterface $storeManager,
+        private readonly Onboarding $onboarding
     ) {
     }
 
@@ -32,6 +35,8 @@ class SyncCron
      */
     public function execute(): void
     {
+        // Quissly Setup's first sync starts here when the Setup page is shut.
+        $this->onboarding->advance();
         foreach ($this->storeManager->getWebsites() as $website) {
             $this->worker->run((int)$website->getId(), 2);
         }

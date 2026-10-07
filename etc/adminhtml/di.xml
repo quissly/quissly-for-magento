@@ -19,4 +19,8 @@
             </argument>
         </arguments>
     </type>
+    <!-- Until Quissly Setup is done, the Quissly menu's Configuration entry opens Setup. -->
+    <type name="Magento\Config\Controller\Adminhtml\System\Config\Edit">
+        <plugin name="quissly_setup_redirect" type="Quissly\Search\Plugin\Adminhtml\SetupRedirect"/>
+    </type>
 </config>

@@ -26,11 +26,15 @@ use Quissly\Search\Model\Config\Settings;
  * The list lives in Quissly, not in Magento - in the website's QSearch service's
  * widget_config, under the Shopify app's keys (`client_specific_queries`, a list of strings,
  * and `search_typing_enabled`, absent = on), so every platform and Quissly read one list.
+ * Since 2026-10-06 a list per store-view language too, Shopify's scheme (SuggestionLanguage):
+ * the main list is in the main language, the others under `client_specific_queries_by_language`.
  *  - read():          the public widget-config read; no config row yet (404) = on, none;
- *  - forStorefront(): read() cached five minutes (a failed read, one) - what the overlay types;
+ *  - forStorefront(): read() cached five minutes (a failed read, one), then the shopper's
+ *                     language's list - what the overlay types;
  *  - save():          sign in as the website's store (PanelSession, the embedded panel's
- *                     sign-in), read, set OUR two keys, PUT the whole blob back (it replaces
- *                     it, so every other key is carried over).
+ *                     sign-in), read, set OUR keys, PUT the whole blob back (it replaces it,
+ *                     so every other key is carried over); saveLanguage() the same for one
+ *                     language's list.
  * The QSearch service id is looked up once through ServiceDirectory and stored at website
  * scope (quissly/connection/search_service_id), like search_namespace.
  */
@@ -57,6 +61,7 @@ class SearchSuggestions
      * @param WriterInterface $configWriter
      * @param ReinitableConfigInterface $reinitableConfig
      * @param LoggerInterface $logger
+     * @param SuggestionLanguage $languages
      */
     public function __construct(
         private readonly Settings $settings,
@@ -66,7 +71,8 @@ class SearchSuggestions
         private readonly CacheInterface $cache,
         private readonly WriterInterface $configWriter,
         private readonly ReinitableConfigInterface $reinitableConfig,
-        private readonly LoggerInterface $logger
+        private readonly LoggerInterface $logger,
+        private readonly SuggestionLanguage $languages
     ) {
     }
 
@@ -121,23 +127,33 @@ class SearchSuggestions
      * The suggestions a widget_config holds (null = no config row: on, none).
      *
      * @param mixed $config
-     * @return array{enabled:bool, queries:string[]}
+     * @return array{enabled:bool, queries:string[], language:string, by_language:array<string,string[]>}
      */
     public function fromConfig($config): array
     {
         $config = is_array($config) ? $config : [];
+        $byLanguage = [];
+        foreach ((array)($config[SuggestionLanguage::BY_LANGUAGE_KEY] ?? []) as $language => $queries) {
+            $queries = $this->clean($queries);
+            if (is_string($language) && $language !== '' && $queries !== []) {
+                $byLanguage[strtolower($language)] = $queries;
+            }
+        }
+        $primary = $config[SuggestionLanguage::PRIMARY_KEY] ?? '';
         return [
             'enabled' => !(array_key_exists(self::TYPING_KEY, $config) && $config[self::TYPING_KEY] === false),
             'queries' => $this->clean($config[self::QUERIES_KEY] ?? []),
+            'language' => is_string($primary) ? strtolower(trim($primary)) : '',
+            'by_language' => $byLanguage,
         ];
     }
 
     /**
-     * The current list from Quissly, or null when it cannot be read.
+     * The current lists from Quissly, or null when they cannot be read.
      *
      * @param int|null $websiteId
      * @param bool $lookUp may look the service id up (admin only - never on a storefront page)
-     * @return array{enabled:bool, queries:string[]}|null
+     * @return array{enabled:bool, queries:string[], language:string, by_language:array<string,string[]>}|null
      */
     public function read(?int $websiteId, bool $lookUp = true): ?array
     {
@@ -159,32 +175,40 @@ class SearchSuggestions
     }
 
     /**
-     * What the storefront overlay types: the list when typing is on, else none.
+     * What the storefront overlay types for a shopper in $language: that language's list
+     * (SuggestionLanguage->pick()) when typing is on, else none.
      *
      * @param int|null $websiteId
+     * @param string $language the store view's language key ('' = the main list)
      * @return string[]
      */
-    public function forStorefront(?int $websiteId): array
+    public function forStorefront(?int $websiteId, string $language = ''): array
     {
         $key = self::CACHE_PREFIX . (int)$websiteId;
         $cached = $this->cache->load($key);
-        if (is_string($cached) && $cached !== '') {
-            $decoded = json_decode($cached, true);
-            if (is_array($decoded)) {
-                return $this->clean($decoded);
-            }
+        $lists = is_string($cached) && $cached !== '' ? json_decode($cached, true) : null;
+        if (!is_array($lists) || !isset($lists['queries'])) {
+            // The stored service id only: a shopper's page never waits on a console lookup
+            // (Configuration looks it up and stores it).
+            $read = $this->read($websiteId, false);
+            $lists = $read !== null && $read['enabled']
+                ? $read
+                : ['queries' => [], 'language' => '', 'by_language' => []];
+            $ttl = $read === null ? self::FAILED_TTL : self::CACHE_TTL;
+            $this->cache->save((string)json_encode($lists, JSON_UNESCAPED_UNICODE), $key, [], $ttl);
         }
-        // The stored service id only: a shopper's page never waits on a console lookup
-        // (Configuration looks it up and stores it).
-        $read = $this->read($websiteId, false);
-        $queries = $read !== null && $read['enabled'] ? $read['queries'] : [];
-        $ttl = $read === null ? self::FAILED_TTL : self::CACHE_TTL;
-        $this->cache->save((string)json_encode($queries), $key, [], $ttl);
-        return $queries;
+        $lists = $this->fromConfig([
+            self::QUERIES_KEY => $lists['queries'] ?? [],
+            SuggestionLanguage::PRIMARY_KEY => $lists['language'] ?? '',
+            SuggestionLanguage::BY_LANGUAGE_KEY => $lists['by_language'] ?? [],
+        ]);
+        return $this->languages->pick($lists, $language, $this->languages->websiteLanguage($websiteId));
     }
 
     /**
-     * Write the list to Quissly. Null when saved, else a merchant-facing reason.
+     * Write the main list (in the website's main language) to Quissly.
+     *
+     * Null when saved, else a merchant-facing reason.
      *
      * @param int|null $websiteId
      * @param bool $enabled
@@ -192,6 +216,57 @@ class SearchSuggestions
      * @return string|null
      */
     public function save(?int $websiteId, bool $enabled, array $queries): ?string
+    {
+        $language = $this->languages->websiteLanguage($websiteId);
+        return $this->write($websiteId, static function (array $config) use ($enabled, $queries, $language): array {
+            $config[self::QUERIES_KEY] = array_values($queries);
+            $config[self::TYPING_KEY] = $enabled;
+            if ($language !== '') {
+                $config[SuggestionLanguage::PRIMARY_KEY] = $language;
+            }
+            return $config;
+        });
+    }
+
+    /**
+     * Write one other language's list; an empty list removes it (its shoppers get the main list).
+     *
+     * Null when saved, else a merchant-facing reason.
+     *
+     * @param int|null $websiteId
+     * @param string $language language key ("fr")
+     * @param string[] $queries cleaned, validated list
+     * @return string|null
+     */
+    public function saveLanguage(?int $websiteId, string $language, array $queries): ?string
+    {
+        $main = $this->languages->websiteLanguage($websiteId);
+        return $this->write($websiteId, static function (array $config) use ($language, $queries, $main): array {
+            $byLanguage = is_array($config[SuggestionLanguage::BY_LANGUAGE_KEY] ?? null)
+                ? $config[SuggestionLanguage::BY_LANGUAGE_KEY]
+                : [];
+            if ($queries === []) {
+                unset($byLanguage[$language]);
+            } else {
+                $byLanguage[$language] = array_values($queries);
+            }
+            // As an object, also when empty: the Shopify app reads a language map.
+            $config[SuggestionLanguage::BY_LANGUAGE_KEY] = (object)$byLanguage;
+            if (!isset($config[SuggestionLanguage::PRIMARY_KEY]) && $main !== '') {
+                $config[SuggestionLanguage::PRIMARY_KEY] = $main;
+            }
+            return $config;
+        });
+    }
+
+    /**
+     * Read the whole widget_config signed in, change it, PUT it back.
+     *
+     * @param int|null $websiteId
+     * @param callable $change fn(array $config): array
+     * @return string|null null when saved, else a merchant-facing reason
+     */
+    private function write(?int $websiteId, callable $change): ?string
     {
         $serviceId = $this->serviceId($websiteId);
         if ($serviceId === null) {
@@ -213,9 +288,7 @@ class SearchSuggestions
             return (string)__('Couldn\'t save the search bar suggestions. Please try again.');
         }
         $config = $current['status'] === 200 ? json_decode($current['body'], true) : [];
-        $config = is_array($config) ? $config : [];
-        $config[self::QUERIES_KEY] = array_values($queries);
-        $config[self::TYPING_KEY] = $enabled;
+        $config = $change(is_array($config) ? $config : []);
 
         $written = $this->http->request(
             'PUT',

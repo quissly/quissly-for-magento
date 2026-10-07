@@ -1,0 +1,394 @@
+<?php
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ *
+ * Quissly Billing - the store's plans, usage and invoices, laid out as the Shopify app's
+ * Settings billing column (web/css/billing.css). web/js/billing.js reads it by its
+ * data-q-* attributes.
+ *
+ * @var \Quissly\Search\Block\Adminhtml\Billing $block
+ * @var \Magento\Framework\Escaper $escaper
+ */
+$view = $block->view();
+?>
+<div class="q-billing" data-q-billing
+     data-config="<?= $escaper->escapeHtmlAttr($block->billingConfigJson()) ?>">
+    <?php if ($view === null): ?>
+        <div class="q-banner q-banner--critical">
+            <?= $escaper->escapeHtml(__('Quissly\'s billing could not be reached just now. Try again in a minute.')) ?>
+        </div>
+    <?php else: ?>
+        <div class="q-settings" data-q-settings>
+            <div class="q-settings__col">
+                <?php if (!$view['billing_open']): ?>
+                    <div class="q-banner q-banner--warning">
+                        <?= $escaper->escapeHtml(__('Paid plans open soon. The free search plan is available now.')) ?>
+                    </div>
+                <?php endif; ?>
+
+                <?php foreach ($view['families'] as $family => $item): ?>
+                    <?php $plan = $item['plan']; ?>
+                    <section class="q-section" data-q-family="<?= $escaper->escapeHtmlAttr($family) ?>">
+                        <div class="q-planhead">
+                            <div class="q-planhead__main">
+                                <p class="q-kicker"><?= $escaper->escapeHtml(__('%1 plan', $item['label'])) ?></p>
+                                <span class="q-planhead__name">
+                                    <?= $escaper->escapeHtml($plan['name'] ?? __('No plan selected')) ?>
+                                </span>
+                                <span class="q-planhead__price">
+                                    <?= $escaper->escapeHtml($plan !== null ? $plan['meta'] : ($family === 'qchat'
+                                        ? __('Add the Quissly chat assistant to your store.')
+                                        : __('Quissly search needs a plan to answer your shoppers.'))) ?>
+                                </span>
+                            </div>
+                            <?php if ($plan !== null): ?>
+                                <span class="q-chip is-<?= $escaper->escapeHtmlAttr($plan['chip']) ?>">
+                                    <span class="q-chip__dot" aria-hidden="true"></span>
+                                    <?= $escaper->escapeHtml($plan['status_label']) ?>
+                                </span>
+                            <?php endif; ?>
+                        </div>
+
+                        <?php foreach ($plan['banners'] ?? [] as $banner): ?>
+                            <div class="q-banner q-banner--<?= $escaper->escapeHtmlAttr($banner['tone']) ?>">
+                                <span><?= $escaper->escapeHtml($banner['text']) ?></span>
+                                <?php if (!empty($banner['op'])): ?>
+                                    <button type="button" class="q-button"
+                                            data-q-op="<?= $escaper->escapeHtmlAttr($banner['op']) ?>"
+                                            data-id="<?= $escaper->escapeHtmlAttr($plan['id']) ?>">
+                                        <?= $escaper->escapeHtml($banner['action']) ?>
+                                    </button>
+                                <?php endif; ?>
+                            </div>
+                        <?php endforeach; ?>
+
+                        <div class="q-stack" data-q-actions>
+                            <?php if ($plan === null || $plan['can_change'] || $plan['can_upgrade_free']): ?>
+                                <button type="button" class="q-button q-button--primary"
+                                        data-q-open="<?= $escaper->escapeHtmlAttr($family) ?>">
+                                    <?= $escaper->escapeHtml($plan === null
+                                        ? __('Choose a plan')
+                                        : ($plan['can_upgrade_free'] ? __('Upgrade plan') : __('Change plan'))) ?>
+                                </button>
+                            <?php endif; ?>
+                            <?php if ($plan !== null && $plan['can_cancel']): ?>
+                                <button type="button" class="q-button q-button--tertiary q-button--critical"
+                                        data-q-op="cancel_confirm"
+                                        data-id="<?= $escaper->escapeHtmlAttr($plan['id']) ?>"
+                                        data-summary="<?= $escaper->escapeHtmlAttr(__(
+                                            'Your plan stays until the end of the paid period, then ends. '
+                                            . 'Nothing is refunded, and you can keep it any time before then.'
+                                        )) ?>">
+                                    <?= $escaper->escapeHtml(__('Cancel subscription')) ?>
+                                </button>
+                            <?php endif; ?>
+                        </div>
+
+                        <?php
+                        // The plans, shown in place when the merchant asks to change or start one.
+                        // From a paid plan the way to Free is cancelling: change-plan moves between
+                        // paid plans only, and monthly <-> yearly is refused, so the cadence
+                        // switch is offered only when a plan is being started.
+                        $changing = $plan !== null && !$plan['can_upgrade_free'];
+                        ?>
+                        <div class="q-stack q-stack--block q-stack--large" data-q-picker
+                             data-sub="<?= $escaper->escapeHtmlAttr($changing ? $plan['id'] : '') ?>"
+                             data-current="<?= $escaper->escapeHtmlAttr($plan['plan_id'] ?? '') ?>" hidden>
+                            <?php if (!$changing): ?>
+                                <div class="q-stack">
+                                    <div class="q-seg" role="radiogroup"
+                                         aria-label="<?= $escaper->escapeHtmlAttr(__('Billing cadence')) ?>">
+                                        <button type="button" class="q-seg__btn" role="radio" aria-checked="true"
+                                                data-q-cycle="monthly">
+                                            <?= $escaper->escapeHtml(__('Monthly')) ?>
+                                        </button>
+                                        <button type="button" class="q-seg__btn" role="radio" aria-checked="false"
+                                                data-q-cycle="annual">
+                                            <?= $escaper->escapeHtml(__('Annual')) ?>
+                                        </button>
+                                    </div>
+                                    <?php if ($view['discount_pct'] > 0): ?>
+                                        <span class="q-pill q-pill--accent">
+                                            <?= $escaper->escapeHtml(__('Annual saves %1%', $view['discount_pct'])) ?>
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endif; ?>
+
+                            <?php
+                            $shown = array_filter(
+                                $item['cards'],
+                                static fn (array $c) => !$c['free'] || !$changing
+                            );
+                            ?>
+                            <div class="q-plans<?= count($shown) === 3 ? ' q-plans--three' : '' ?>" role="radiogroup"
+                                 aria-label="<?= $escaper->escapeHtmlAttr(__('%1 plans', $item['label'])) ?>">
+                                <?php foreach ($shown as $card): ?>
+                                    <button type="button" role="radio" aria-checked="false"
+                                            class="q-plan<?= $card['popular'] ? ' is-popular' : '' ?>"
+                                            data-q-pick="<?= $escaper->escapeHtmlAttr($card['id']) ?>"
+                                            data-free="<?= $card['free'] ? '1' : '0' ?>"
+                                            <?= $card['disabled'] ? 'aria-disabled="true"' : '' ?>>
+                                        <?php if ($card['disabled']): ?>
+                                            <span class="q-pill q-pill--warn q-plan__ribbon">
+                                                <?= $escaper->escapeHtml(__('Opens soon')) ?>
+                                            </span>
+                                        <?php elseif ($card['popular']): ?>
+                                            <span class="q-pill q-pill--accent q-plan__ribbon">
+                                                <?= $escaper->escapeHtml(__('Most popular')) ?>
+                                            </span>
+                                        <?php endif; ?>
+                                        <span class="q-plan__head">
+                                            <span class="q-plan__name"><?= $escaper->escapeHtml($card['name']) ?></span>
+                                            <span class="q-plan__radio" aria-hidden="true"></span>
+                                        </span>
+                                        <span class="q-plan__price">
+                                            <span class="q-plan__amount" data-q-monthly>
+                                                <?= $escaper->escapeHtml($card['monthly']) ?>
+                                            </span>
+                                            <span class="q-plan__amount" data-q-annual hidden>
+                                                <?= $escaper->escapeHtml($card['annual_month']) ?>
+                                            </span>
+                                            <span class="q-plan__cadence"><?= $escaper->escapeHtml(__('/mo')) ?></span>
+                                        </span>
+                                        <span class="q-plan__note" data-q-monthly>
+                                            <?= $escaper->escapeHtml($card['note_month']) ?>
+                                        </span>
+                                        <span class="q-plan__note" data-q-annual hidden>
+                                            <?= $escaper->escapeHtml($card['note_year']) ?>
+                                        </span>
+                                        <?php if ($card['trial'] !== '' && !$changing): ?>
+                                            <span>
+                                                <span class="q-pill q-pill--brand">
+                                                    <?= $escaper->escapeHtml($card['trial']) ?>
+                                                </span>
+                                            </span>
+                                        <?php endif; ?>
+                                        <span class="q-plan__feats" role="list">
+                                            <?php foreach ($card['feats'] as $i => $feat): ?>
+                                                <span class="q-plan__feat<?= $i === 0 ? ' is-lead' : '' ?>"
+                                                      role="listitem"><?= $escaper->escapeHtml($feat) ?></span>
+                                            <?php endforeach; ?>
+                                        </span>
+                                    </button>
+                                <?php endforeach; ?>
+                            </div>
+
+                            <p class="q-text-quiet" data-q-same hidden>
+                                <?= $escaper->escapeHtml(__(
+                                    'This is the plan you are on. Pick a different one to change it.'
+                                )) ?>
+                            </p>
+
+                            <div class="q-stack">
+                                <button type="button" class="q-button q-button--primary" data-q-confirm disabled>
+                                    <?= $escaper->escapeHtml(__('Confirm plan')) ?>
+                                </button>
+                                <button type="button" class="q-button q-button--tertiary" data-q-close>
+                                    <?= $escaper->escapeHtml(__('Cancel')) ?>
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+                <?php endforeach; ?>
+
+                <?php if ($view['meters'] !== []): ?>
+                    <section class="q-section">
+                        <h2 class="q-section__heading"><?= $escaper->escapeHtml(__('Usage')) ?></h2>
+                        <div class="q-usagepanel">
+                            <div class="q-usagepanel__meters">
+                                <?php foreach ($view['meters'] as $meter): ?>
+                                    <div class="q-usage">
+                                        <div class="q-usage__head">
+                                            <span class="q-usage__label">
+                                                <?= $escaper->escapeHtml($meter['label']) ?>
+                                            </span>
+                                            <span class="q-usage__value">
+                                                <strong><?= $escaper->escapeHtml($meter['used']) ?></strong>
+                                                <?php if ($meter['of'] !== ''): ?>
+                                                    <span class="q-usage__limit">
+                                                        / <?= $escaper->escapeHtml($meter['of']) ?>
+                                                    </span>
+                                                    <span class="q-usage__left<?= $meter['out'] ? ' is-out' : '' ?>">
+                                                        · <?= $escaper->escapeHtml($meter['left']) ?>
+                                                    </span>
+                                                <?php endif; ?>
+                                            </span>
+                                        </div>
+                                        <div class="q-usage__track <?= $escaper->escapeHtmlAttr($meter['tone']) ?>"
+                                             role="progressbar"
+                                             aria-label="<?= $escaper->escapeHtmlAttr($meter['label']) ?>"
+                                             aria-valuemin="0" aria-valuemax="<?= (int)$meter['of_raw'] ?>"
+                                             aria-valuenow="<?= (int)min($meter['used_raw'], $meter['of_raw']) ?>">
+                                            <div class="q-usage__fill"
+                                                 style="width: <?= (float)$meter['pct'] ?>%"></div>
+                                        </div>
+                                        <?php if ($meter['note'] !== ''): ?>
+                                            <p class="q-usage__note"><?= $escaper->escapeHtml($meter['note']) ?></p>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                            <?php if ($view['window'] !== ''): ?>
+                                <p class="q-usagepanel__window"><?= $escaper->escapeHtml($view['window']) ?></p>
+                            <?php endif; ?>
+                        </div>
+                    </section>
+                <?php endif; ?>
+
+                <?php if ($view['extras'] !== []): ?>
+                    <section class="q-section">
+                        <h2 class="q-section__heading"><?= $escaper->escapeHtml(__('Extra requests')) ?></h2>
+                        <div class="q-grid">
+                            <?php foreach ($view['extras'] as $extra): ?>
+                                <?php if ($extra['plan']['extra'] !== null): ?>
+                                    <div class="q-metric">
+                                        <span class="q-metric__value">
+                                            <?= $escaper->escapeHtml($extra['plan']['extra']['price']) ?>
+                                        </span>
+                                        <span class="q-metric__label">
+                                            <?= $escaper->escapeHtml(__(
+                                                '%1 · %2 extra requests',
+                                                $extra['label'],
+                                                $extra['plan']['extra']['requests']
+                                            )) ?>
+                                        </span>
+                                    </div>
+                                <?php endif; ?>
+                                <div class="q-metric">
+                                    <span class="q-metric__value">
+                                        <?= $escaper->escapeHtml(number_format($extra['extra'])) ?>
+                                    </span>
+                                    <span class="q-metric__label">
+                                        <?= $escaper->escapeHtml(__('%1 extra this month', $extra['label'])) ?>
+                                    </span>
+                                    <span class="q-metric__hint">
+                                        <?= $escaper->escapeHtml(__('Unused ones carry over')) ?>
+                                    </span>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <p class="q-text-quiet">
+                            <?= $escaper->escapeHtml(__(
+                                'Extra requests are bought in blocks and charged to your card at once. '
+                                . 'They carry over to next month while your plan continues.'
+                            )) ?>
+                        </p>
+                        <?php
+                        $buyable = array_filter(
+                            $view['extras'],
+                            static fn (array $e) => $e['plan']['can_topup']
+                        );
+                        ?>
+                        <?php if ($buyable !== []): ?>
+                            <div class="q-divider"></div>
+                            <div class="q-stack">
+                                <?php foreach ($buyable as $extra): ?>
+                                    <button type="button" class="q-button" data-q-op="topup_preview"
+                                            data-id="<?= $escaper->escapeHtmlAttr($extra['plan']['id']) ?>">
+                                        <?= $escaper->escapeHtml(count($buyable) > 1
+                                            ? __('%1: %2', $extra['label'], $extra['plan']['extra']['label'])
+                                            : $extra['plan']['extra']['label']) ?>
+                                    </button>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
+                    </section>
+                <?php endif; ?>
+            </div>
+
+            <div class="q-settings__col">
+                <section class="q-section">
+                    <h2 class="q-section__heading"><?= $escaper->escapeHtml(__('Invoices')) ?></h2>
+                    <?php if ($view['invoices'] === null): ?>
+                        <p class="q-text-quiet">
+                            <?= $escaper->escapeHtml(__('Invoices could not be loaded just now.')) ?>
+                        </p>
+                    <?php elseif ($view['invoices'] === []): ?>
+                        <p class="q-text-quiet"><?= $escaper->escapeHtml(__('No payments yet.')) ?></p>
+                    <?php else: ?>
+                        <div class="q-list" role="list">
+                            <?php foreach ($view['invoices'] as $invoice): ?>
+                                <div class="q-list__row" role="listitem">
+                                    <div class="q-list__main">
+                                        <span class="q-list__label">
+                                            <?= $escaper->escapeHtml(
+                                                __('%1 · %2', $invoice['amount'], $invoice['status'])
+                                            ) ?>
+                                        </span>
+                                        <span class="q-list__note">
+                                            <?= $escaper->escapeHtml(
+                                                __('%1 · for %2', $invoice['date'], $invoice['period'])
+                                            ) ?>
+                                        </span>
+                                    </div>
+                                    <?php if ($invoice['pdf']): ?>
+                                        <div class="q-list__aside">
+                                            <button type="button" class="q-button" data-q-op="invoice_pdf"
+                                                    data-id="<?= $escaper->escapeHtmlAttr($invoice['id']) ?>">
+                                                <?= $escaper->escapeHtml(__('PDF')) ?>
+                                            </button>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                </section>
+
+                <?php
+                $paid = array_filter(
+                    array_column($view['families'], 'plan'),
+                    static fn ($p) => $p && $p['can_card']
+                );
+                ?>
+                <section class="q-section">
+                    <h2 class="q-section__heading"><?= $escaper->escapeHtml(__('Payment method')) ?></h2>
+                    <p class="q-text-quiet">
+                        <?= $escaper->escapeHtml(__(
+                            'Payments are processed by Paddle, Quissly\'s merchant of record. '
+                            . 'Your card is never stored here.'
+                        )) ?>
+                    </p>
+                    <?php if ($paid !== []): ?>
+                        <div class="q-list" role="list">
+                            <?php foreach ($paid as $plan): ?>
+                                <div class="q-list__row" role="listitem">
+                                    <div class="q-list__main">
+                                        <span class="q-list__label"><?= $escaper->escapeHtml($plan['name']) ?></span>
+                                        <span class="q-list__note">
+                                            <?= $escaper->escapeHtml(__('Card on file with Paddle')) ?>
+                                        </span>
+                                    </div>
+                                    <div class="q-list__aside">
+                                        <button type="button" class="q-button" data-q-op="payment_method"
+                                                data-id="<?= $escaper->escapeHtmlAttr($plan['id']) ?>">
+                                            <?= $escaper->escapeHtml(__('Update card')) ?>
+                                        </button>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                </section>
+            </div>
+        </div>
+    <?php endif; ?>
+
+    <div class="q-modal" data-q-modal hidden>
+        <div class="q-modal__box" role="dialog" aria-modal="true" aria-labelledby="q-modal-title">
+            <h3 class="q-modal__title" id="q-modal-title" data-q-modal-title></h3>
+            <div class="q-modal__body">
+                <p data-q-modal-body></p>
+                <div class="q-banner q-banner--critical" data-q-modal-error hidden></div>
+            </div>
+            <div class="q-modal__actions">
+                <button type="button" class="q-button" data-q-modal-cancel>
+                    <?= $escaper->escapeHtml(__('Cancel')) ?>
+                </button>
+                <button type="button" class="q-button q-button--primary" data-q-modal-ok></button>
+            </div>
+        </div>
+    </div>
+</div>

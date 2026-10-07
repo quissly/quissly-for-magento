@@ -11,23 +11,12 @@ use Psr\Log\LoggerInterface;
 use Quissly\Search\Model\Config\Settings;
 
 /**
- * v1 catalog operations for a website's tenant: add / update / delete + status
- * polling. Returns decoded outcomes; interpretation of per-item results is the
- * StatusClassifier's job (R3 rules), not this transport wrapper's.
+ * v1 catalog operations for a website's tenant: add / update / delete. Returns
+ * the outcome of the send itself; the operation's status is not read - a 2xx is
+ * the batch delivered, as in the Quissly Shopify app (SyncWorker).
  */
 class CatalogClient
 {
-    /**
-     * The POST returns an operation id immediately; what takes time is the
-     * operation reaching a terminal status. Polling every 5s for 24 tries gave
-     * up after two minutes, which a 50-item batch regularly outran - the batch
-     * was then counted failed and requeued, the retry found everything already
-     * ingested, and it was re-routed to an update. That is where the phantom
-     * "update" operations came from. Fewer, longer waits: 10 x 30s = 5 minutes.
-     */
-    private const MAX_STATUS_POLLS = 10;
-    private const STATUS_POLL_DELAY_SECONDS = 30;
-
     /**
      * @param Settings $settings
      * @param HttpClient $httpClient
@@ -96,101 +85,6 @@ class CatalogClient
             $this->settings->apiBaseUrl($websiteId)
         );
         return $this->mutationOutcome($response, 'DELETE', count($ids));
-    }
-
-    /**
-     * One status request, no waiting: the decoded body whatever its state, or
-     * null when the request itself failed. Used to check on an operation kept
-     * from an earlier run (PendingOperations) without spending the poll budget.
-     *
-     * @param string $operationId
-     * @param int|null $websiteId
-     * @return array|null
-     * @throws SignerException
-     */
-    public function checkStatus(string $operationId, ?int $websiteId): ?array
-    {
-        [$token, $key] = $this->credentials($websiteId);
-        if ($token === null) {
-            return null;
-        }
-        $response = $this->httpClient->getV1CatalogStatus(
-            $operationId,
-            $token,
-            $key,
-            $this->settings->environment($websiteId),
-            $this->settings->apiBaseUrl($websiteId)
-        );
-        if ($response['status'] !== 200) {
-            $this->logger->info(sprintf(
-                '[quissly] catalog status check http=%d op=%s',
-                $response['status'],
-                $operationId
-            ));
-            return null;
-        }
-        $decoded = json_decode($response['body'], true);
-        return is_array($decoded) ? $decoded : null;
-    }
-
-    /**
-     * Poll an operation to a terminal state (bounded).
-     *
-     * @param string $operationId
-     * @param int|null $websiteId
-     * @return array|null Decoded terminal status body, null when never terminal/reachable
-     * @throws SignerException
-     */
-    public function pollStatus(string $operationId, ?int $websiteId): ?array
-    {
-        [$token, $key] = $this->credentials($websiteId);
-        if ($token === null) {
-            return null;
-        }
-        $environment = $this->settings->environment($websiteId);
-        for ($attempt = 0; $attempt < self::MAX_STATUS_POLLS; $attempt++) {
-            if ($attempt > 0) {
-                // Background cron path; bounded waiting is acceptable here.
-                // phpcs:ignore Magento2.Functions.DiscouragedFunction
-                sleep(self::STATUS_POLL_DELAY_SECONDS);
-            }
-            $response = $this->httpClient->getV1CatalogStatus(
-                $operationId,
-                $token,
-                $key,
-                $environment,
-                $this->settings->apiBaseUrl($websiteId)
-            );
-            if ($response['status'] !== 200) {
-                $this->logger->info(sprintf(
-                    '[quissly] catalog status poll http=%d op=%s',
-                    $response['status'],
-                    $operationId
-                ));
-                continue;
-            }
-            $decoded = json_decode($response['body'], true);
-            if (!is_array($decoded)) {
-                continue;
-            }
-            $state = strtolower((string)($decoded['status'] ?? ''));
-            if (in_array($state, \Quissly\Search\Model\Sync\StatusClassifier::TERMINAL_STATES, true)) {
-                return $decoded;
-            }
-        }
-
-        // Giving up used to be silent, which hid the single most informative
-        // failure in the sync path: the batch had almost certainly been
-        // ingested, we simply stopped waiting for the verdict. The caller then
-        // counts it failed and requeues it, and the retry comes back "already
-        // exists" - which is where the phantom update operations come from.
-        $this->logger->info(sprintf(
-            '[quissly] catalog status poll gave up after %ds op=%s (never reached a terminal state)',
-            self::MAX_STATUS_POLLS * self::STATUS_POLL_DELAY_SECONDS,
-            $operationId
-        ));
-
-        return null;
     }
 
     /**

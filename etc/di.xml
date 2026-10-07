@@ -15,6 +15,7 @@
             <argument name="commands" xsi:type="array">
                 <item name="quissly_gate" xsi:type="object">Quissly\Search\Console\Command\GateCommand</item>
                 <item name="quissly_sync" xsi:type="object">Quissly\Search\Console\Command\SyncCommand</item>
+                <item name="quissly_update" xsi:type="object">Quissly\Search\Console\Command\UpdateCommand</item>
             </argument>
         </arguments>
     </type>
@@ -84,6 +85,17 @@
     -->
     <!-- Console-host clients: same log destination as the search clients, or
          their failures land in system.log where nobody looks for them. -->
+    <type name="Quissly\Search\Model\Update\Updater">
+        <arguments>
+            <argument name="logger" xsi:type="object">Quissly\Search\Logger\Logger</argument>
+        </arguments>
+    </type>
+    <!-- Lazy: the command is built on every bin/magento call, the updater only when it runs. -->
+    <type name="Quissly\Search\Console\Command\UpdateCommand">
+        <arguments>
+            <argument name="updater" xsi:type="object">Quissly\Search\Model\Update\Updater\Proxy</argument>
+        </arguments>
+    </type>
     <type name="Quissly\Search\Model\Api\QuickClient">
         <arguments>
             <argument name="logger" xsi:type="object">Quissly\Search\Logger\Logger</argument>

@@ -7,6 +7,8 @@ declare(strict_types=1);
 
 namespace Quissly\Search\Setup;
 
+use Magento\Framework\App\Filesystem\DirectoryList;
+use Magento\Framework\Filesystem\Driver\File;
 use Magento\Framework\Setup\ModuleContextInterface;
 use Magento\Framework\Setup\SchemaSetupInterface;
 use Magento\Framework\Setup\UninstallInterface;
@@ -39,7 +41,19 @@ class Uninstall implements UninstallInterface
         'quissly_connected_at_w',
         'quissly_sync_pending_ops_w',
         'quissly_stock_reconcile_cursor_w',
+        'quissly_onboarding',
+        'quissly_update',
     ];
+
+    /**
+     * @param DirectoryList $directories
+     * @param File $files
+     */
+    public function __construct(
+        private readonly DirectoryList $directories,
+        private readonly File $files
+    ) {
+    }
 
     /**
      * Drop everything this module created.
@@ -70,6 +84,12 @@ class Uninstall implements UninstallInterface
         $flagTable = $setup->getTable('flag');
         foreach (self::FLAG_PREFIXES as $prefix) {
             $connection->delete($flagTable, ['flag_code LIKE ?' => $prefix . '%']);
+        }
+
+        // The automatic update's work folder: it holds the previous version as a backup.
+        $work = rtrim($this->directories->getPath(DirectoryList::VAR_DIR), '/') . '/quissly/update';
+        if ($this->files->isExists($work)) {
+            $this->files->deleteDirectory($work);
         }
 
         $setup->endSetup();

@@ -18,6 +18,9 @@ namespace Quissly\Search\Model\Search;
  *
  * Pure: unit-tested against the Shopify app's own expectations.
  *
+ * Phrased per language (PHRASES: en, ka, fr, ru - 2026-10-06, a list per store-view language):
+ * a language given is used; with none, Georgian when most titles are Georgian, else English.
+ *
  * Catalog facts: array{shop_name:?string, currency:?string, products: list<array{title,
  * product_type:?string, category:?string, vendor:?string, options: list<array{name, values:
  * string[]}>, min_price:?float}>}.
@@ -31,9 +34,36 @@ class ShowcaseQueries
     /** A query must return at least this many products to be worth showing. */
     public const MIN_RESULTS = 2;
 
-    private const COLOR_OPTION    = '/^(colou?r|ფერი|цвет)$/iu';
-    private const SIZE_OPTION     = '/^(size|ზომა|размер)$/iu';
-    private const MATERIAL_OPTION = '/^(material|fabric|მასალა|материал)$/iu';
+    private const COLOR_OPTION    = '/^(colou?r|couleur|ფერი|цвет)$/iu';
+    private const SIZE_OPTION     = '/^(size|taille|ზომა|размер)$/iu';
+    private const MATERIAL_OPTION = '/^(material|fabric|matière|matériau|tissu|მასალა|материал)$/iu';
+
+    /**
+     * How each kind is phrased, per language ({type} {color} {size} {material} {n} {cur}).
+     * Word order follows the language: French puts the colour and the material after the type.
+     */
+    public const PHRASES = [
+        'en' => [
+            'attributes' => '{color} {type} size {size}', 'price' => '{type} under {n} {cur}',
+            'cheapest' => 'cheapest {type}', 'material' => '{material} {type}', 'color' => '{color} {type}',
+            'gift' => 'gift ideas under {n} {cur}',
+        ],
+        'ka' => [
+            'attributes' => '{color} {type} ზომა {size}', 'price' => '{type} {n} {cur}-მდე',
+            'cheapest' => 'ყველაზე იაფი {type}', 'material' => '{material} {type}', 'color' => '{color} {type}',
+            'gift' => 'საჩუქარი {n} {cur}-მდე',
+        ],
+        'fr' => [
+            'attributes' => '{type} {color} taille {size}', 'price' => '{type} à moins de {n} {cur}',
+            'cheapest' => '{type} pas cher', 'material' => '{type} en {material}', 'color' => '{type} {color}',
+            'gift' => 'idée cadeau à moins de {n} {cur}',
+        ],
+        'ru' => [
+            'attributes' => '{color} {type} размер {size}', 'price' => '{type} до {n} {cur}',
+            'cheapest' => 'самые дешёвые {type}', 'material' => '{material} {type}', 'color' => '{color} {type}',
+            'gift' => 'подарок до {n} {cur}',
+        ],
+    ];
 
     /** Kinds, in the order candidates are interleaved. */
     private const ORDER = [
@@ -54,9 +84,10 @@ class ShowcaseQueries
      * The runner runs them through search and keeps the first that return results, one per kind.
      *
      * @param array $facts Catalog facts (see the class comment).
+     * @param string|null $language a PHRASES language; null = Georgian or English, from the titles
      * @return array<int,array{kind:string,query:string}>
      */
-    public function buildCandidates(array $facts)
+    public function buildCandidates(array $facts, ?string $language = null)
     {
         $products = array_values(
             array_filter(
@@ -74,7 +105,13 @@ class ShowcaseQueries
         foreach ($products as $p) {
             $georgianCount += $this->isGeorgian((string) $p['title']) ? 1 : 0;
         }
-        $georgian = $georgianCount > count($products) / 2;
+        if ($language === null || !isset(self::PHRASES[$language])) {
+            $language = $georgianCount > count($products) / 2 ? 'ka' : 'en';
+        }
+        $georgian = $language === 'ka';
+        $say = static function (string $kind, array $words) use ($language): string {
+            return strtr(self::PHRASES[$language][$kind], $words);
+        };
         $currency = $this->clean($facts['currency'] ?? '');
         $shopKey = mb_strtolower($this->clean($facts['shop_name'] ?? ''));
         $kindOf  = function ($p) {
@@ -96,9 +133,6 @@ class ShowcaseQueries
             }
             $out[] = ['kind' => $kind, 'query' => $q];
         };
-        $priceText = function ($n) use ($georgian, $currency) {
-            return $georgian ? "{$n} {$currency}-მდე" : "under {$n} {$currency}";
-        };
 
         foreach ($types as $type) {
             $ofType = array_values(
@@ -116,9 +150,9 @@ class ShowcaseQueries
 
             // Several conditions at once: colour + type + size.
             if (isset($colors[0], $sizes[0])) {
-                $add('attributes', $georgian
-                    ? $this->lowerLatin($colors[0]) . " {$typeText} ზომა {$sizes[0]}"
-                    : $this->lowerLatin($colors[0]) . " {$typeText} size {$sizes[0]}");
+                $add('attributes', $say('attributes', [
+                    '{color}' => $this->lowerLatin($colors[0]), '{type}' => $typeText, '{size}' => $sizes[0],
+                ]));
             }
             // A price limit a real shopper would pick: just above the typical price.
             $typical = $this->median(
@@ -130,7 +164,9 @@ class ShowcaseQueries
                 )
             );
             if ($typical && '' !== $currency) {
-                $add('price_limit', "{$typeText} " . $priceText($this->niceCeil($typical)));
+                $add('price_limit', $say('price', [
+                    '{type}' => $typeText, '{n}' => (string)$this->niceCeil($typical), '{cur}' => $currency,
+                ]));
             }
 
             if ($georgian) {
@@ -158,12 +194,14 @@ class ShowcaseQueries
                 $add('brand', "{$brands[0]} {$typeText}");
             }
 
-            $add('cheapest', $georgian ? "ყველაზე იაფი {$typeText}" : "cheapest {$typeText}");
+            $add('cheapest', $say('cheapest', ['{type}' => $typeText]));
             if (isset($materials[0])) {
-                $add('material', $this->lowerLatin($materials[0]) . " {$typeText}");
+                $add('material', $say('material', [
+                    '{material}' => $this->lowerLatin($materials[0]), '{type}' => $typeText,
+                ]));
             }
             if (isset($colors[0])) {
-                $add('color', $this->lowerLatin($colors[0]) . " {$typeText}");
+                $add('color', $say('color', ['{color}' => $this->lowerLatin($colors[0]), '{type}' => $typeText]));
             }
         }
 
@@ -178,7 +216,7 @@ class ShowcaseQueries
         );
         if ($typicalAll && '' !== $currency) {
             $n = $this->niceCeil($typicalAll);
-            $add('gift', $georgian ? "საჩუქარი {$n} {$currency}-მდე" : "gift ideas under {$n} {$currency}");
+            $add('gift', $say('gift', ['{n}' => (string)$n, '{cur}' => $currency]));
         }
 
         // Interleave kinds so the first few candidates already cover different abilities

@@ -13,6 +13,7 @@
                 <resource id="Quissly_Search::quissly" title="Quissly" translate="title" sortOrder="80">
                     <resource id="Quissly_Search::config" title="Configuration" translate="title" sortOrder="10"/>
                     <resource id="Quissly_Search::dashboard" title="Dashboard" translate="title" sortOrder="20"/>
+                    <resource id="Quissly_Search::billing" title="Billing" translate="title" sortOrder="30"/>
                 </resource>
             </resource>
         </resources>
