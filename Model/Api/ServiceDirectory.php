@@ -64,8 +64,7 @@ class ServiceDirectory
      * The qsearch service's quissly_service_link: the namespace of Quissly's own
      * product ids. The chat widget names a product by uuid5(link, "<product id>"),
      * so the chat cart bridge (Model/Cart/ChatIdMap) needs it to map the widget's
-     * ids back to Magento ids. LIVE-CONFIRMED 2026-09-24 on the CS-Cart and
-     * WooCommerce test stores.
+     * ids back to Magento ids.
      *
      * @param int|null $websiteId
      * @return string|null

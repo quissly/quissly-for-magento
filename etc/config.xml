@@ -24,8 +24,11 @@
                      what the opt-in rule exists to prevent. -->
                 <enable_search>0</enable_search>
                 <enable_overlay>1</enable_overlay>
+                <overlay_suggestions>1</overlay_suggestions>
+                <overlay_suggestions_mode>automatic</overlay_suggestions_mode>
                 <enable_voice>0</enable_voice>
                 <enable_quick>0</enable_quick>
+                <enable_events>1</enable_events>
                 <quick_style>rows</quick_style>
                 <enable_image>0</enable_image>
                 <enable_qchat>0</enable_qchat>
@@ -37,6 +40,12 @@
                      a merchant edits the list in Stores > Configuration > Quissly. -->
                 <metadata_attributes>brand,manufacturer,color,size,material,pattern,style,gender,weight,country_of_manufacture,collection,fabric,fit,occasion,season,length,width,height,depth,dimensions,capacity,volume,model,series,age_group,care_instructions,composition,features,format,flavor,scent,finish,warranty,eco_collection,performance_fabric,climate,activity,category_gear,strap_bags,style_bags,style_general,style_bottom,sleeve,neckline,closure,heel_height,shoe_type,sole,lining,print,room,shape,theme,type,usage,power,wattage,voltage,connectivity,resolution,screen_size,storage,memory,operating_system,processor,battery_life,sport,team,brand_line,edition,author,publisher,language,vintage,region,origin,ingredients,allergens,diet,certification,sustainability,recyclable,handmade,limited_edition,new_arrival,best_seller</metadata_attributes>
             </catalog>
+            <most_loved>
+                <enabled>0</enabled>
+            </most_loved>
+            <updates>
+                <check_every>1800</check_every>
+            </updates>
         </quissly>
     </default>
 </config>

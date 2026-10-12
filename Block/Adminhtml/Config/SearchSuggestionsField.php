@@ -16,7 +16,7 @@ use Quissly\Search\Model\Search\ShowcaseRunner;
 use Quissly\Search\Model\Search\SuggestionLanguage;
 
 /**
- * The "Search bar suggestions" fields (typing_enabled, suggestions).
+ * The "Search Examples" fields (typing_enabled, suggestions) - the typing list.
  *
  * Their value lives in Quissly, not in core_config_data (Model/Search/SearchSuggestions), so each
  * renders what Quissly holds for the website in scope - and no "Use Default" box, since there is
@@ -26,9 +26,10 @@ use Quissly\Search\Model\Search\SuggestionLanguage;
  *
  * The list is the Shopify app's Settings editor (web/js/config-suggestions.js): a Language select
  * over the website's store-view languages (the main one first, "(default)"), that language's
- * suggestions as removable pills, "Add a suggestion", "N of 20" and "Reset to generated" (the list
+ * examples one per row with Remove, "Add a suggestion", "N of 20" and "Reset to generated" (the list
  * generated from the catalog, Model/Search/ShowcaseRunner). Every language's list goes back in one
  * hidden field as JSON; Model/Config/Backend/SearchSuggestions writes the ones that changed.
+ * The generated lists themselves are written by Quissly (Model/Search/ShowcaseRunner asks for them).
  */
 class SearchSuggestionsField extends Field
 {
@@ -88,7 +89,7 @@ class SearchSuggestionsField extends Field
     }
 
     /**
-     * The pill editor: its configuration for config-suggestions.js and its markup.
+     * The list editor: its configuration for config-suggestions.js and its markup.
      *
      * @param AbstractElement $element
      * @param array $current what Quissly holds
@@ -117,12 +118,15 @@ class SearchSuggestionsField extends Field
             . $this->languageSelect($element, $languages)
             . '<input type="hidden" id="' . $this->escapeHtmlAttr($element->getHtmlId()) . '" name="'
             . $this->escapeHtmlAttr($element->getName()) . '" value="" data-q-value>'
-            . '<div class="q-pills" data-q-pills aria-live="polite"></div>'
+            . '<div class="q-rows" data-q-rows aria-live="polite"></div>'
+            . '<label class="q-suggestions__add-label" for="'
+            . $this->escapeHtmlAttr($element->getHtmlId() . '_new') . '">'
+            . $this->escapeHtml(__('Add a suggestion')) . '</label>'
             . '<div class="q-suggestions__add">'
             . '<input type="text" class="input-text admin__control-text" maxlength="'
-            . SearchSuggestions::MAX_LENGTH . '" autocomplete="off" data-q-new aria-label="'
-            . $this->escapeHtmlAttr(__('Add a suggestion')) . '" placeholder="'
-            . $this->escapeHtmlAttr(__('Add a suggestion, e.g. waterproof jacket')) . '">'
+            . SearchSuggestions::MAX_LENGTH . '" autocomplete="off" data-q-new id="'
+            . $this->escapeHtmlAttr($element->getHtmlId() . '_new') . '" placeholder="'
+            . $this->escapeHtmlAttr(__('e.g. waterproof jacket under $100')) . '">'
             . '<button type="button" class="action-default" data-q-add>' . $this->escapeHtml(__('Add')) . '</button>'
             . '</div>'
             . '<p class="q-suggestions__error" data-q-error hidden></p>'
@@ -193,7 +197,7 @@ class SearchSuggestionsField extends Field
                     ? (string)__('%1 (default)', $this->languages->name($code))
                     : $this->languages->name($code),
                 'queries' => $i === 0 ? $current['queries'] : ($current['by_language'][$code] ?? []),
-                'generated' => $websiteId === null ? [] : $this->showcase->generated($websiteId, $language),
+                'generated' => $this->generatedList($current, $websiteId, $language),
                 'note' => $finished ? '' : (string)__(
                     'Left empty, suggestions are generated from your catalog after the first catalog sync '
                     . '- each one checked to find products.'
@@ -201,6 +205,26 @@ class SearchSuggestionsField extends Field
             ];
         }
         return $models;
+    }
+
+    /**
+     * The list "Reset to generated" puts back: what Quissly's generator wrote
+     * (client_specific_queries_generated), else what it last answered here.
+     *
+     * @param array $current what Quissly holds
+     * @param int|null $websiteId
+     * @param string|null $language another language's list; null = the main list
+     * @return string[]
+     */
+    private function generatedList(array $current, ?int $websiteId, ?string $language): array
+    {
+        $fromQuissly = $language === null
+            ? ($current['generated']['main'] ?? [])
+            : ($current['generated']['by_language'][$language] ?? []);
+        if ($fromQuissly !== [] || $websiteId === null) {
+            return $fromQuissly;
+        }
+        return $this->showcase->generated($websiteId, $language);
     }
 
     /**

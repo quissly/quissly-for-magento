@@ -81,6 +81,8 @@ class Setup extends Template
         return (string)$this->json->serialize([
             'step' => $step,
             'reached' => $step,
+            // The plan is chosen: its step is closed until setup is finished (Billing changes it).
+            'planLocked' => $this->isPlanLocked(),
             'reload' => $this->getUrl('quissly/setup/index'),
             'csrf' => ['form_key' => $this->getFormKey()],
             'endpoints' => [
@@ -92,8 +94,9 @@ class Setup extends Template
             'text' => [
                 'connecting' => (string)__('Creating your Quissly account...'),
                 'saving' => (string)__('Saving...'),
-                'goingLive' => (string)__('Going live...'),
+                'goingLive' => (string)__('Finishing...'),
                 'pickPlan' => (string)__('Pick a plan to continue'),
+                'invoiceNote' => (string)__('paid by invoice, no card needed now'),
                 'saveYear' => (string)__('Save %1/yr'),
                 'saveDefault' => ($this->planView()['discount_pct'] ?? 0) > 0
                     ? (string)__('Save %1%', $this->planView()['discount_pct'])
@@ -109,18 +112,75 @@ class Setup extends Template
                 'emailInvalid' => (string)__('Enter a valid email address, like name@example.com.'),
                 'emailTooLong' => (string)__('Email address is too long.'),
                 'emailPublic' => (string)__('Use an address on a real, public domain.'),
-                'nameInvalid' => (string)__('Use letters, numbers, spaces and hyphens in the store name.'),
+                'nameInvalid' => (string)__('Use only letters, numbers, spaces and hyphens.'),
+                // Why Save is disabled, in the bar beside it: the first problem only.
+                'blockers' => [
+                    'emailMissing' => (string)__('Add an email to continue.'),
+                    'emailInvalid' => (string)__('Fix the email to continue.'),
+                    'nameMissing' => (string)__('Add your store name to continue.'),
+                    'nameInvalid' => (string)__('Fix the store name to continue.'),
+                    'sellMissing' => (string)__('Add what you sell to continue.'),
+                    'none' => (string)__('Nothing is charged yet.'),
+                ],
                 'chipWorking' => (string)__('Setting up...'),
                 'chipReady' => (string)__('Ready'),
-                'chipFailed' => (string)__('Needs attention'),
                 'states' => [
                     'done' => (string)__('Done'),
                     'running' => (string)__('Running'),
-                    'pending' => (string)__('Waiting'),
+                    'pending' => (string)__('Pending'),
                     'failed' => (string)__('Failed'),
+                ],
+                // Go live, by phase: the one sentence on what is left, the account setup card's
+                // words, and the note beside Finish.
+                'intro' => [
+                    'building' => (string)__(
+                        'We\'re setting up your account - usually about a minute. '
+                        . 'Then your products are sent to Quissly.'
+                    ),
+                    'importing' => (string)__(
+                        'Your products are on their way to Quissly. Finish Setup unlocks once they\'re in.'
+                    ),
+                    'failed' => (string)__(
+                        'One thing left: your products didn\'t reach Quissly. Start the import again under '
+                        . 'Account setup, or do this later.'
+                    ),
+                    'ready' => (string)__(
+                        'Everything is ready. Finish setup to switch Quissly on and open your dashboard.'
+                    ),
+                ],
+                'body' => [
+                    'building' => (string)__(
+                        'We do this part for you - nothing to click. This page updates by itself.'
+                    ),
+                    'built' => (string)__('All done. Here\'s what we set up for your store.'),
+                ],
+                'note' => [
+                    'building' => (string)__('Finish unlocks when account setup completes.'),
+                    'waiting' => (string)__('Not ready yet? Do this later and turn Quissly on from Configuration.'),
+                    'ready' => (string)__('All set - finish setup to open your dashboard.'),
                 ],
             ],
         ]);
+    }
+
+    /**
+     * Whether the plan is chosen and its step closed until setup is finished.
+     *
+     * @return bool
+     */
+    public function isPlanLocked(): bool
+    {
+        return $this->step() === 'golive' && $this->onboarding->isPlanLocked();
+    }
+
+    /**
+     * The chosen plan's products (qsearch, qchat); none = not known, counted as search.
+     *
+     * @return string[]
+     */
+    public function services(): array
+    {
+        return $this->onboarding->services();
     }
 
     /**
@@ -300,11 +360,12 @@ class Setup extends Template
         $requests = (int)($quota['requests_per_month'] ?? 0);
         $extra = $quota['extra_block'] ?? null;
         if ($family === 'qchat' && $requests === 0) {
-            $usage = [(string)__('Human agents only'), (string)__('no AI messages')];
+            // The human-only tier: "0" would read as a broken plan, so it says so in words.
+            $usage = [(string)__('Live chat'), (string)__('answered by your team')];
         } else {
             $usage = [
                 number_format($requests),
-                $family === 'qchat' ? (string)__('AI messages / mo') : (string)__('searches / mo'),
+                $family === 'qchat' ? (string)__('AI chat messages a month') : (string)__('searches a month'),
             ];
         }
         $extraFigure = is_array($extra)

@@ -7,6 +7,7 @@ declare(strict_types=1);
 
 namespace Quissly\Search\Model\Update;
 
+use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\App\DeploymentConfig;
 use Magento\Framework\App\Filesystem\DirectoryList;
 use Magento\Framework\App\MaintenanceMode;
@@ -24,8 +25,12 @@ use Symfony\Component\Process\Process;
 /**
  * Automatic updates from the module's public GitHub repository.
  *
- * Once a day (Cron/UpdateCron, or `bin/magento quissly:update` by hand) the module asks
- * GitHub for the latest release. When it is newer than the installed version it is
+ * Every "Update check frequency" (Stores > Configuration > Quissly > Updates: 5 minutes for
+ * testing, 30 minutes by default, up to a day, or Never) the module reads the version in the
+ * repository's composer.json on GitHub's CDN (raw.githubusercontent.com - no API rate limit),
+ * and asks GitHub for the latest release when that names a newer version than the one
+ * installed and known - and at least once a day. Cron/UpdateCron ticks every 5 minutes;
+ * `bin/magento quissly:update` checks and installs at once, Never included. A newer release is
  * installed straight away:
  *
  *  1. the release zip is downloaded and checked: signed with Quissly's release key
@@ -54,6 +59,12 @@ class Updater
     public const CHECK_EVERY = 86400;
     public const RETRY_AFTER = 3600;
 
+    /** The merchant's "Update check frequency" (default scope; Release::interval()). */
+    public const EVERY_PATH = 'quissly/updates/check_every';
+
+    /** The repository's composer.json on GitHub's CDN: its version is the latest one pushed. */
+    public const HINT_URL = 'https://raw.githubusercontent.com/quissly/quissly-for-magento/main/composer.json';
+
     /** How long one bin/magento step may take (static content on a big store is slow). */
     private const STEP_TIMEOUT = 3600;
 
@@ -71,6 +82,7 @@ class Updater
      * @param LockManagerInterface $locks
      * @param Release $release
      * @param LoggerInterface $logger
+     * @param ScopeConfigInterface $config
      */
     public function __construct(
         private readonly CurlFactory $curlFactory,
@@ -83,22 +95,30 @@ class Updater
         private readonly DeploymentConfig $deploymentConfig,
         private readonly LockManagerInterface $locks,
         private readonly Release $release,
-        private readonly LoggerInterface $logger
+        private readonly LoggerInterface $logger,
+        private readonly ScopeConfigInterface $config
     ) {
     }
 
     /**
-     * Check (and install) when the day is up - or now, with $force.
+     * Check (and install) when the frequency's time is up - or now, with $force.
      *
      * @param int $now
-     * @param bool $force check and install now, a version that failed included
-     * @return string what happened: not_due, check_failed, up_to_date, composer_install,
-     *                git_checkout, skipped_failed, busy, installed:<version>, failed:<reason>
+     * @param bool $force check and install now, a version that failed included (and Never)
+     * @return string what happened: never, not_due, nothing_new, check_failed, up_to_date,
+     *                composer_install, git_checkout, skipped_failed, busy, installed:<version>,
+     *                failed:<reason>
      */
     public function run(int $now, bool $force = false): string
     {
+        $every = $this->interval();
+        if (!$force && $every === Release::NEVER) {
+            return 'never';
+        }
         $state = (array)($this->flags->getFlagData(self::FLAG) ?: []);
-        if (!$force && (int)($state['next_at'] ?? 0) > $now) {
+        // A frequency changed since the last check applies at once.
+        $changed = (int)($state['every'] ?? 0) !== $every;
+        if (!$force && !$changed && (int)($state['next_at'] ?? 0) > $now) {
             return 'not_due';
         }
         if (!$this->locks->lock(self::LOCK, 0)) {
@@ -106,14 +126,28 @@ class Updater
         }
         try {
             // Claimed before the network: the next tick finds it not due.
-            $state['next_at'] = $now + self::RETRY_AFTER;
+            $state['every'] = $every;
+            $state['next_at'] = $now + min(self::RETRY_AFTER, $every);
             $this->flags->saveFlag(self::FLAG, $state);
+
+            // The cheap check first: GitHub's CDN copy of composer.json. Only news (or a day
+            // since the last full check) asks GitHub's API for the release.
+            if (!$force && $now - (int)($state['checked_at'] ?? 0) < self::CHECK_EVERY) {
+                $hinted = $this->hintedVersion();
+                $known = (string)($state['latest'] ?? '');
+                if ($hinted === null || !$this->release->isNews($hinted, $this->installedVersion(), $known)) {
+                    $state['next_at'] = $now + $every;
+                    $state['hinted_at'] = $now;
+                    $this->flags->saveFlag(self::FLAG, $state);
+                    return 'nothing_new';
+                }
+            }
 
             $release = $this->latest();
             if ($release === null) {
-                return 'check_failed'; // tried again in an hour
+                return 'check_failed'; // tried again soon
             }
-            $state['next_at'] = $now + self::CHECK_EVERY;
+            $state['next_at'] = $now + $every;
             $state['checked_at'] = $now;
             $state['latest'] = $release['version'];
             $result = $this->consider($release, $state, $now, $force);
@@ -122,6 +156,41 @@ class Updater
         } finally {
             $this->locks->unlock(self::LOCK);
         }
+    }
+
+    /**
+     * The merchant's "Update check frequency", in seconds (Release::NEVER = never).
+     *
+     * @return int
+     */
+    public function interval(): int
+    {
+        return $this->release->interval($this->config->getValue(self::EVERY_PATH));
+    }
+
+    /**
+     * The installed module's version.
+     *
+     * @return string
+     */
+    private function installedVersion(): string
+    {
+        $moduleDir = rtrim((string)$this->components->getPath(ComponentRegistrar::MODULE, 'Quissly_Search'), '/');
+        return (string)$this->release->versionIn($this->read($moduleDir . '/composer.json'));
+    }
+
+    /**
+     * The version GitHub's CDN copy of the repository's composer.json names.
+     *
+     * Null when it cannot be read. `quissly/update_hint_url` in app/etc/env.php replaces the address.
+     *
+     * @return string|null
+     */
+    private function hintedVersion(): ?string
+    {
+        $override = (string)$this->deploymentConfig->get('quissly/update_hint_url');
+        $body = $this->fetch($override !== '' ? $override : self::HINT_URL);
+        return $body === null ? null : $this->release->versionIn($body);
     }
 
     /**

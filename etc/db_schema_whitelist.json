@@ -38,5 +38,21 @@
         "constraint": {
             "PRIMARY": true
         }
+    },
+    "quissly_event_queue": {
+        "column": {
+            "queue_id": true,
+            "website_id": true,
+            "body": true,
+            "attempts": true,
+            "created_at": true,
+            "next_at": true
+        },
+        "index": {
+            "QUISSLY_EVENT_QUEUE_WEBSITE_NEXT": true
+        },
+        "constraint": {
+            "PRIMARY": true
+        }
     }
 }

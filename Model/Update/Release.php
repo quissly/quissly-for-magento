@@ -107,6 +107,45 @@ class Release
         return null;
     }
 
+    /** "Never": no checks and no automatic install (`bin/magento quissly:update` by hand). */
+    public const NEVER = 0;
+
+    /** How often a store checks, unless the merchant chose otherwise: every 30 minutes. */
+    public const DEFAULT_EVERY = 1800;
+
+    /** The frequencies offered: 5 minutes (for testing), 30 minutes (the default) to a day, never. */
+    public const FREQUENCIES = [300, 1800, 3600, 21600, 43200, 86400, self::NEVER];
+
+    /**
+     * A frequency as one of FREQUENCIES; anything else (nothing chosen included) is the default.
+     *
+     * @param mixed $value seconds
+     * @return int
+     */
+    public function interval($value): int
+    {
+        if (!is_numeric($value)) {
+            return self::DEFAULT_EVERY;
+        }
+        return in_array((int)$value, self::FREQUENCIES, true) ? (int)$value : self::DEFAULT_EVERY;
+    }
+
+    /**
+     * Whether a version the release repository's composer.json names is worth asking GitHub about.
+     *
+     * It is when it is newer than the installed one and than the release already known.
+     *
+     * @param string $hinted
+     * @param string $installed
+     * @param string $known '' = none known yet
+     * @return bool
+     */
+    public function isNews(string $hinted, string $installed, string $known): bool
+    {
+        return version_compare($hinted, $installed, '>')
+            && ($known === '' || version_compare($hinted, $known, '>'));
+    }
+
     /**
      * The version a composer.json declares.
      *

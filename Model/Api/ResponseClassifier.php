@@ -8,8 +8,7 @@ declare(strict_types=1);
 namespace Quissly\Search\Model\Api;
 
 /**
- * Classifies a Quissly API outcome per the fallback matrix
- * (live-confirmed behaviors).
+ * Classifies a Quissly API outcome per the fallback matrix.
  *
  * Pure PHP so it is unit-testable without Magento. Key rules:
  *  - 403 with a JSON "detail" body is the APPLICATION (auth / billing / feature

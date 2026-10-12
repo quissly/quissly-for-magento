@@ -14,8 +14,7 @@ use Quissly\Search\Model\Config\Settings;
 /**
  * Quissly's store billing API: the plans a store can buy, and buying one.
  *
- * Contract: chat-backend-middleware `app/applications/billing/store_router.py`
- * (STORE_BILLING_API.md), on the console host. `GET /plans` is public; every
+ * On the console host. `GET /plans` is public; every
  * other route takes the store's API key in `X-Store-Api-Key` - the key Connect
  * stored, sent from this server only and never to the browser.
  *
@@ -93,14 +92,20 @@ class StoreBilling
      * @param int|null $websiteId
      * @param string $planId
      * @param string $billingCycle monthly|annual
+     * @param float $autoTopupMaxUsd automatic top-up's maximum a month; 0 = off
      * @return array{ok: bool, kind: string, pay_url: string, message: string}
      */
-    public function checkout(?int $websiteId, string $planId, string $billingCycle): array
+    public function checkout(?int $websiteId, string $planId, string $billingCycle, float $autoTopupMaxUsd = 0.0): array
     {
-        $result = $this->request('POST', '/checkout', $websiteId, [
+        $body = [
             'plan_id' => $planId,
             'billing_cycle' => $billingCycle === 'annual' ? 'annual' : 'monthly',
-        ]);
+        ];
+        if ($autoTopupMaxUsd > 0) {
+            // Asked before the card form opens: Paddle's form cannot carry it.
+            $body['auto_topup_max_usd'] = round($autoTopupMaxUsd, 2);
+        }
+        $result = $this->request('POST', '/checkout', $websiteId, $body);
         if (!$result['ok']) {
             return ['ok' => false, 'kind' => '', 'pay_url' => '', 'message' => $result['message']];
         }
@@ -151,7 +156,8 @@ class StoreBilling
      * One plan-management call on a subscription.
      *
      * Ops: invoice_pdf (GET, id is the invoice), change_preview / change {plan_id},
-     * topup_preview / topup {idempotency_key}, cancel, resume, abort, payment_method.
+     * topup_preview / topup {idempotency_key}, cancel, resume, abort, payment_method,
+     * auto_topup {max_usd}, refund_preview, refund, refund_claim {reason}.
      *
      * @param int|null $websiteId
      * @param string $op
@@ -171,6 +177,10 @@ class StoreBilling
             'resume' => ['POST', '/subscriptions/%s/resume'],
             'abort' => ['POST', '/subscriptions/%s/abort-scheduled-change'],
             'payment_method' => ['POST', '/subscriptions/%s/payment-method'],
+            'auto_topup' => ['POST', '/subscriptions/%s/auto-topup'],
+            'refund_preview' => ['POST', '/subscriptions/%s/refund/preview'],
+            'refund' => ['POST', '/subscriptions/%s/refund'],
+            'refund_claim' => ['POST', '/subscriptions/%s/refund-claim'],
         ];
         if (!isset($routes[$op]) || !preg_match('/^[0-9a-fA-F-]{36}$/', $id)) {
             return ['ok' => false, 'data' => [], 'message' => $this->message(0, '')];

@@ -12,7 +12,7 @@ use Magento\Framework\Data\OptionSourceInterface;
 /**
  * Quissly environment options.
  *
- * LIVE-CONFIRMED against the deployed API: the backend enum is
+ * Quissly accepts exactly
  * demo|dev|test|staging|prod - note "staging", never "stage". An invalid value
  * is rejected with a 422 naming the allowed set.
  */

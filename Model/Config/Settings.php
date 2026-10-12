@@ -13,6 +13,7 @@ use Magento\Framework\Encryption\EncryptorInterface;
 use Magento\Store\Model\ScopeInterface;
 use Quissly\Search\Model\Cart\ChatIds;
 use Quissly\Search\Model\Config\Source\QuickStyle;
+use Quissly\Search\Model\Config\Source\SuggestionsMode;
 use Magento\Store\Model\StoreManagerInterface;
 
 /**
@@ -29,7 +30,7 @@ class Settings
     public const DEFAULT_API_BASE_URL = 'https://api.quissly.com';
 
     /**
-     * The middleware that issues panel sessions.
+     * Quissly's console, which issues panel sessions.
      *
      * A DIFFERENT host from the search API: api.quissly.com answers qsearch and
      * catalog, while the console answers auth and panel data. Conflating them
@@ -41,7 +42,7 @@ class Settings
     public const DEFAULT_PANEL_URL = 'https://admin.quissly.com';
 
     /**
-     * The QChat widget bundle. Overridable (hidden field) so a test store can
+     * The QChat widget bundle. Overridable (hidden field) so a store can
      * pin a different build; the override is constrained to the Quissly CDN,
      * which is also the only script host etc/csp_whitelist.xml allows.
      */
@@ -67,9 +68,16 @@ class Settings
     private const PATH_ENABLE_QCHAT = 'quissly/features/enable_qchat';
     private const PATH_QCHAT_AGENT_ID = 'quissly/features/qchat_agent_id';
     private const PATH_ENABLE_OVERLAY = 'quissly/features/enable_overlay';
+    private const PATH_OVERLAY_SUGGESTIONS = 'quissly/features/overlay_suggestions';
+    private const PATH_OVERLAY_SUGGESTIONS_MODE = 'quissly/features/overlay_suggestions_mode';
+    private const PATH_OVERLAY_SUGGESTIONS_MANUAL = 'quissly/features/overlay_suggestions_manual';
+    private const PATH_MOST_LOVED = 'quissly/most_loved/enabled';
+    private const PATH_MOST_LOVED_SHOWN = 'quissly/most_loved/shown';
+    private const PATH_MOST_LOVED_BACKUPS = 'quissly/most_loved/backups';
     private const PATH_ENABLE_VOICE = 'quissly/features/enable_voice';
     private const PATH_ENABLE_IMAGE = 'quissly/features/enable_image';
     private const PATH_ENABLE_QUICK = 'quissly/features/enable_quick';
+    private const PATH_ENABLE_EVENTS = 'quissly/features/enable_events';
     private const PATH_QUICK_STYLE = 'quissly/features/quick_style';
     private const PATH_QCHAT_SCRIPT_URL = 'quissly/features/qchat_script_url';
     private const PATH_OVERLAY_MOUNT_SELECTOR = 'quissly/features/overlay_mount_selector';
@@ -234,7 +242,7 @@ class Settings
      * The Quissly account the panel session is opened as.
      *
      * Must be the account CREATED BY PROVISIONING (provider = magento).
-     * A person's ordinary Quissly login will be refused: the middleware rejects
+     * A person's ordinary Quissly login will be refused: Quissly rejects
      * a service login whose stored provider does not match the platform, which
      * stops a store's API key from being used to impersonate staff. An
      * unrecognised address is worse than an error - it silently creates a new
@@ -268,7 +276,7 @@ class Settings
     }
 
     /**
-     * The middleware host that issues panel sessions.
+     * The console host that issues panel sessions.
      *
      * @param int|null $websiteId
      * @return string
@@ -441,6 +449,86 @@ class Settings
     }
 
     /**
+     * Whether the overlay shows the search bar suggestions under its bar (default ON).
+     *
+     * @param int|null $websiteId
+     * @return bool
+     */
+    public function isOverlaySuggestionsEnabled(?int $websiteId = null): bool
+    {
+        return (bool)$this->scopeConfig->isSetFlag(
+            self::PATH_OVERLAY_SUGGESTIONS,
+            ScopeInterface::SCOPE_WEBSITE,
+            $this->resolveWebsiteId($websiteId)
+        );
+    }
+
+    /**
+     * Which suggestions those buttons are.
+     *
+     * SuggestionsMode::AUTOMATIC (default - what Quissly generated) or SuggestionsMode::MANUAL
+     * (the merchant's own list).
+     *
+     * @param int|null $websiteId
+     * @return string
+     */
+    public function overlaySuggestionsMode(?int $websiteId = null): string
+    {
+        $value = (string)$this->scopeConfig->getValue(
+            self::PATH_OVERLAY_SUGGESTIONS_MODE,
+            ScopeInterface::SCOPE_WEBSITE,
+            $this->resolveWebsiteId($websiteId)
+        );
+        return $value === SuggestionsMode::MANUAL ? SuggestionsMode::MANUAL : SuggestionsMode::AUTOMATIC;
+    }
+
+    /**
+     * Whether the overlay shows the merchant's Most loved products (default OFF).
+     *
+     * @param int|null $websiteId
+     * @return bool
+     */
+    public function isMostLovedEnabled(?int $websiteId = null): bool
+    {
+        return (bool)$this->scopeConfig->isSetFlag(
+            self::PATH_MOST_LOVED,
+            ScopeInterface::SCOPE_WEBSITE,
+            $this->resolveWebsiteId($websiteId)
+        );
+    }
+
+    /**
+     * The Most loved picks as saved: SKUs, one per line - the 8 shown or the 4 backups.
+     *
+     * @param int|null $websiteId
+     * @param bool $backups the backups' list instead of the shown one
+     * @return string
+     */
+    public function mostLovedSkus(?int $websiteId = null, bool $backups = false): string
+    {
+        return (string)$this->scopeConfig->getValue(
+            $backups ? self::PATH_MOST_LOVED_BACKUPS : self::PATH_MOST_LOVED_SHOWN,
+            ScopeInterface::SCOPE_WEBSITE,
+            $this->resolveWebsiteId($websiteId)
+        );
+    }
+
+    /**
+     * The merchant's own suggestion buttons (Manual) as saved: one per line.
+     *
+     * @param int|null $websiteId
+     * @return string
+     */
+    public function overlayManualSuggestions(?int $websiteId = null): string
+    {
+        return (string)$this->scopeConfig->getValue(
+            self::PATH_OVERLAY_SUGGESTIONS_MANUAL,
+            ScopeInterface::SCOPE_WEBSITE,
+            $this->resolveWebsiteId($websiteId)
+        );
+    }
+
+    /**
      * Whether voice search is toggled on for the website (default OFF).
      *
      * Live since 2026-08-21 (the tenant's transcription_prompt is set).
@@ -493,6 +581,24 @@ class Settings
     }
 
     /**
+     * Whether the website's shopping activity goes to Quissly's analytics (default ON).
+     *
+     * Product page views, searches, adds to cart and wishlist, paid orders
+     * (Model/Events). Not gated on the first sync: it is not a catalogue feature.
+     *
+     * @param int|null $websiteId
+     * @return bool
+     */
+    public function isEventsEnabled(?int $websiteId = null): bool
+    {
+        return (bool)$this->scopeConfig->isSetFlag(
+            self::PATH_ENABLE_EVENTS,
+            ScopeInterface::SCOPE_WEBSITE,
+            $this->resolveWebsiteId($websiteId)
+        );
+    }
+
+    /**
      * Which Quick presentation the merchant chose.
      *
      * Presentation only: both styles show the same products in the same order.
@@ -514,7 +620,7 @@ class Settings
     }
 
     /**
-     * The website's QChat agent id - the middleware Service id, a PUBLIC
+     * The website's QChat agent id - the chat service's id, a PUBLIC
      * identifier (never the X-Service-UUID, never the bearer).
      * Null when unset/blank.
      *

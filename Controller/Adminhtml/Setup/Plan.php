@@ -21,8 +21,12 @@ use Quissly\Search\Model\Connect\Onboarding;
  *              answers a payment link the page opens in a new tab
  * op=check     whether a plan of that product is live yet (after paying)
  * op=keep      carry on with the plan the store already has
+ * op=invoice   a paid plan paid by manual invoice: no checkout, recorded, on to Go live
  * op=later     carry on without one - only while the plans cannot be loaded,
  *              so a Quissly outage never strands a merchant on this step
+ *
+ * The plan is chosen once during Setup (the Shopify app's rule): once it is, every op is
+ * refused - a stale tab would otherwise start a second plan. Billing changes it afterwards.
  */
 class Plan extends Action implements HttpPostActionInterface
 {
@@ -54,6 +58,14 @@ class Plan extends Action implements HttpPostActionInterface
         if (!$this->onboarding->isConnected()) {
             return $result->setData(['ok' => false, 'message' => (string)__('Connect the store first.')]);
         }
+        if ($this->onboarding->isPlanLocked()) {
+            return $result->setData([
+                'ok' => false,
+                'message' => (string)__(
+                    'Your plan is already active. You can change it in Billing once setup is finished.'
+                ),
+            ]);
+        }
         $websiteId = $this->onboarding->websiteId();
         $request = $this->getRequest();
 
@@ -68,7 +80,7 @@ class Plan extends Action implements HttpPostActionInterface
                     return $result->setData(['ok' => false, 'message' => $checkout['message']]);
                 }
                 if ($checkout['kind'] === 'free_activated') {
-                    $this->onboarding->planChosen();
+                    $this->onboarding->planChosen([(string)($request->getParam('family') ?: 'qsearch')]);
                     return $result->setData(['ok' => true, 'kind' => 'active']);
                 }
                 return $result->setData(['ok' => true, 'kind' => 'pay', 'pay_url' => $checkout['pay_url']]);
@@ -83,13 +95,33 @@ class Plan extends Action implements HttpPostActionInterface
                 $family = (string)$request->getParam('family');
                 $active = $family !== '' ? isset($live[$family]) : $live !== [];
                 if ($active) {
-                    $this->onboarding->planChosen();
+                    $this->onboarding->planChosen(array_keys($live));
                 }
                 return $result->setData([
                     'ok' => true,
                     'active' => $active,
                     'message' => $active ? '' : (string)__('Payment not received yet.'),
                 ]);
+
+            case 'invoice':
+                $planId = (string)$request->getParam('plan_id');
+                $plan = null;
+                foreach ((array)($this->billing->plans($websiteId)['plans'] ?? []) as $row) {
+                    if ((string)($row['id'] ?? '') === $planId && empty($row['is_free'])) {
+                        $plan = $row;
+                    }
+                }
+                if ($plan === null) {
+                    return $result->setData(['ok' => false, 'message' => (string)__('Choose a plan to continue.')]);
+                }
+                $family = (string)($plan['family'] ?? 'qsearch');
+                $this->onboarding->invoiceChosen(
+                    $planId,
+                    trim(($family === 'qchat' ? 'QChat' : 'QSearch') . ' ' . ucfirst((string)($plan['tier'] ?? ''))),
+                    $family,
+                    (string)$request->getParam('billing_cycle')
+                );
+                return $result->setData(['ok' => true, 'kind' => 'invoice']);
 
             case 'later':
                 if ($this->billing->plans($websiteId) !== null) {

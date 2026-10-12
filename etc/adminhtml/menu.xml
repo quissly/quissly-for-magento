@@ -38,7 +38,7 @@
              sortOrder="20" parent="Quissly_Search::quissly" action="quissly/dashboard/index"
              resource="Quissly_Search::dashboard"/>
         <!--
-            Fourth: the store's Quissly plans, usage and invoices (STORE_BILLING_API.md). Its own
+            Fourth: the store's Quissly plans, usage and invoices (Quissly's store billing API). Its own
             ACL resource, so a role can manage the store without seeing what Quissly costs.
         -->
         <add id="Quissly_Search::billing" title="Billing" translate="title" module="Quissly_Search"

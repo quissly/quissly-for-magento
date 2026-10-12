@@ -1,0 +1,23 @@
+<?php
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ *
+ * Shopping activity for Quissly's analytics: a product page view or a search, sent once by
+ * quissly-events.js. A config host element + the external script (CSP-safe: no inline JS).
+ * Renders nothing while the switch is off or the website is not connected.
+ *
+ * @var \Magento\Framework\View\Element\Template $block
+ * @var \Magento\Framework\Escaper $escaper
+ */
+
+/** @var \Quissly\Search\ViewModel\EventsConfig $eventsConfig */
+$eventsConfig = $block->getData('events_config');
+$quisslyEvent = $eventsConfig ? $eventsConfig->event((string)$block->getData('page')) : null;
+?>
+<?php if ($quisslyEvent !== null): ?>
+<div data-quissly-events="<?= $escaper->escapeHtmlAttr($eventsConfig->endpoint()) ?>"
+     data-event="<?= $escaper->escapeHtmlAttr((string)json_encode($quisslyEvent, JSON_UNESCAPED_UNICODE)) ?>"
+     hidden></div>
+<script src="<?= $escaper->escapeUrl($block->getViewFileUrl('Quissly_Search::js/quissly-events.js')) ?>" defer></script>
+<?php endif; ?>

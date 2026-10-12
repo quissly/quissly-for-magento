@@ -18,10 +18,10 @@ use Magento\Store\Model\StoreManagerInterface;
 use Quissly\Search\Model\Sync\CatalogAttributes;
 
 /**
- * Catalog facts for ShowcaseQueries: the 100 most recently changed searchable products of a
- * website - name, deepest category (the product "type"), brand (manufacturer / brand),
- * configurable options and the Catalog data attributes with their values, lowest price -
- * plus the store's name and base currency.
+ * Catalog facts for Quissly's suggestion generator (SuggestionsEnrich): the 100 most recently
+ * changed searchable products of a website - name, deepest category (the product "type"), brand
+ * (manufacturer / brand), configurable options and the Catalog data attributes with their values,
+ * lowest and highest price - plus the store's name and base currency.
  */
 class ShowcaseCatalog
 {
@@ -66,7 +66,7 @@ class ShowcaseCatalog
                 'visibility',
                 ['in' => [Visibility::VISIBILITY_IN_SEARCH, Visibility::VISIBILITY_BOTH]]
             )
-            ->addMinimalPrice()
+            ->addPriceData()
             ->setOrder('updated_at', 'DESC')
             ->setPageSize(self::LIMIT)
             ->setCurPage(1);
@@ -75,7 +75,9 @@ class ShowcaseCatalog
         foreach ($collection as $product) {
             /** @var Product $product */
             [$options, $vendor] = $this->options($product, $websiteId);
-            $price = (float)($product->getMinimalPrice() ?: $product->getFinalPrice() ?: $product->getPrice());
+            $price = (float)($product->getMinPrice() ?: $product->getMinimalPrice() ?: $product->getFinalPrice()
+                ?: $product->getPrice());
+            $max = (float)($product->getMaxPrice() ?: $price);
             $products[] = [
                 'title' => (string)$product->getName(),
                 'product_type' => $this->deepestCategory($product, $storeId),
@@ -83,6 +85,7 @@ class ShowcaseCatalog
                 'vendor' => $vendor,
                 'options' => $options,
                 'min_price' => $price > 0 ? $price : null,
+                'max_price' => $max > 0 ? max($max, $price) : null,
             ];
         }
 

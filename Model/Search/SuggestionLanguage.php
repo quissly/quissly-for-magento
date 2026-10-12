@@ -14,7 +14,7 @@ use Magento\Store\Model\StoreManagerInterface;
 /**
  * Which language a search bar suggestion list is in, and which list a shopper sees.
  *
- * The Quissly Shopify app's scheme (showcase-queries.server.ts, `suggestionsForLocale`), so one
+ * The Quissly Shopify app's scheme, so one
  * service's widget_config reads the same on every platform:
  *
  *   client_specific_queries             the main list, in the store's main language

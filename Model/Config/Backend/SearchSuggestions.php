@@ -14,7 +14,6 @@ use Magento\Framework\Message\ManagerInterface as MessageManager;
 use Magento\PageCache\Model\Cache\Type as PageCache;
 use Magento\Store\Model\ScopeInterface;
 use Quissly\Search\Model\Search\SearchSuggestions as Suggestions;
-use Quissly\Search\Model\Search\ShowcaseRunner;
 use Quissly\Search\Model\Search\SuggestionLanguage;
 
 /**
@@ -27,8 +26,8 @@ use Quissly\Search\Model\Search\SuggestionLanguage;
  * from Quissly is written. A list over the limits is refused before anything is written. The
  * page cache is cleaned after a write: the overlay's list is part of every cached page.
  *
- * A write that changes a list makes it the merchant's own: generation (ShowcaseRunner) never
- * writes over that language's list after that.
+ * A list the merchant changed is theirs: Quissly's generator (Model/Search/ShowcaseRunner asks
+ * for it) keeps any list that differs from what it generated, so nothing is recorded here.
  */
 class SearchSuggestions extends Value
 {
@@ -40,7 +39,6 @@ class SearchSuggestions extends Value
      * @param Suggestions $suggestions
      * @param \Magento\Store\Model\StoreManagerInterface $storeManager
      * @param MessageManager $messages
-     * @param ShowcaseRunner $showcase
      * @param SuggestionLanguage $languages
      * @param \Magento\Framework\Model\ResourceModel\AbstractResource|null $resource
      * @param \Magento\Framework\Data\Collection\AbstractDb|null $resourceCollection
@@ -54,7 +52,6 @@ class SearchSuggestions extends Value
         private readonly Suggestions $suggestions,
         private readonly \Magento\Store\Model\StoreManagerInterface $storeManager,
         private readonly MessageManager $messages,
-        private readonly ShowcaseRunner $showcase,
         private readonly SuggestionLanguage $languages,
         ?\Magento\Framework\Model\ResourceModel\AbstractResource $resource = null,
         ?\Magento\Framework\Data\Collection\AbstractDb $resourceCollection = null,
@@ -112,9 +109,6 @@ class SearchSuggestions extends Value
                     continue;
                 }
                 $written = true;
-                if ($current['queries'] !== $queries) {
-                    $this->showcase->merchantSaved($websiteId);
-                }
             }
             foreach ($lists as $language => $list) {
                 if ($language === $main || ($current['by_language'][$language] ?? []) === $list) {
@@ -122,7 +116,6 @@ class SearchSuggestions extends Value
                 }
                 if ($this->report($this->suggestions->saveLanguage($websiteId, $language, $list))) {
                     $written = true;
-                    $this->showcase->merchantSaved($websiteId, $language);
                 }
             }
         }

@@ -84,7 +84,7 @@ class ProductMapper
      *
      * The deployed search's facet builder iterates selected_options expecting
      * exactly these keys and 500-crashes every matching query on any other
-     * shape (backend trim.py:149; confirmed by the Quissly team 2026-08-18).
+     * shape.
      * Pure by design so the
      * unit tier locks the shape without Magento.
      *
@@ -149,9 +149,8 @@ class ProductMapper
             }
         }
 
-        // Since 2026-08-18 the backend indexes childless records on the fast
-        // path, so simples ship as clean childless records: "variants": [] is
-        // the live-verified childless shape. The variant map stays: real
+        // Quissly indexes childless records on the fast path, so simples ship
+        // as clean childless records: "variants": [] is the childless shape. The variant map stays: real
         // configurables need their per-variant receipts rolled up.
         if (!isset($record['variants'])) {
             $record['variants'] = [];
@@ -582,8 +581,8 @@ class ProductMapper
     }
 
     /**
-     * Top-level ProductItem field names on the /add wire (backend
-     * catalog_models.py ProductItem, plus the id). A metadata key matching one
+     * Top-level product field names on the /add wire (Quissly's
+     * product item, plus the id). A metadata key matching one
      * of these - compared case-insensitively - is renamed to attr_<key>.
      */
     public const RESERVED_METADATA_KEYS = [
@@ -813,12 +812,17 @@ class ProductMapper
      * HTML to the text a shopper reads: entities decoded, tags gone, whitespace
      * collapsed. Magento stores descriptions and option labels with entities
      * ("Lycra&reg;", "&nbsp;") which must never reach the index as literal text.
+     * Page Builder's <style> blocks (its CSS) and <script> blocks go with their contents, and
+     * so do Magento's template directives ({{widget ...}}, {{media url=...}}, {{store ...}}),
+     * which a shopper never reads either.
      *
      * @param string $html
      * @return string
      */
     public function plainText(string $html): string
     {
+        $html = (string)preg_replace('#<(script|style)\b[^>]*>.*?</\1>#is', ' ', $html);
+        $html = (string)preg_replace('/\{\{[^{}]*\}\}/u', ' ', $html);
         // phpcs:ignore Magento2.Functions.DiscouragedFunction -- decoding, not rendering: no escaper does this
         $text = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
         return trim((string)preg_replace('/\s+/u', ' ', $text));

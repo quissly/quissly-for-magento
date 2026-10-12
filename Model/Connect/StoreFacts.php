@@ -22,7 +22,7 @@ use Quissly\Search\Model\Config\Settings;
 /**
  * What Quissly Setup's description draft is written from: the website's own facts.
  *
- * The Shopify app reads the same facts from Shopify (description-draft.server.ts): the store's
+ * The Shopify app reads the same facts from Shopify: the store's
  * meta description, its active products and their kinds (here: categories), where the business
  * is, the price range and the brands. Any failure gives no draft, never a failed Setup page.
  */

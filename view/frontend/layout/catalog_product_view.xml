@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Quissly. All rights reserved.
+ * See COPYING.txt for license details.
+ *
+ * Shopping activity: this product page's view, for Quissly's analytics (renders nothing
+ * while the switch is off). A hidden host element and a script - the page itself is
+ * untouched.
+ */
+-->
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <body>
+        <referenceContainer name="before.body.end">
+            <block name="quissly.events.product" template="Quissly_Search::events.phtml">
+                <arguments>
+                    <argument name="events_config" xsi:type="object">Quissly\Search\ViewModel\EventsConfig</argument>
+                    <argument name="page" xsi:type="string">product</argument>
+                </arguments>
+            </block>
+        </referenceContainer>
+    </body>
+</page>

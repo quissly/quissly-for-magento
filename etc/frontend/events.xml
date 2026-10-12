@@ -12,4 +12,11 @@
         <observer name="quissly_search_diagnostic_header"
                   instance="Quissly\Search\Observer\SearchDiagnosticHeader"/>
     </event>
+    <!-- Shopping activity: the shopper's own adds (Model/Events/Recorder) - a queue row each. -->
+    <event name="checkout_cart_product_add_after">
+        <observer name="quissly_event_cart_add" instance="Quissly\Search\Observer\Events\CartAddObserver"/>
+    </event>
+    <event name="wishlist_add_product">
+        <observer name="quissly_event_wishlist_add" instance="Quissly\Search\Observer\Events\WishlistAddObserver"/>
+    </event>
 </config>

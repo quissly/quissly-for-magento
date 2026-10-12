@@ -5,8 +5,10 @@
  * Immersive search overlay (default ON since 2026-09-06, rendered only where
  * Quissly is live - see ViewModel/OverlayConfig). Clicking the theme's search
  * box opens a full-width search bar at the top of a blurred page, with a close
- * button beside it and, below it, the slot Quick fills with its suggestions
- * ([data-quissly-overlay-results]; empty - and invisible - when Quick is off).
+ * button beside it and, below it, the store's search bar suggestions as buttons
+ * while the bar is empty (the merchant's switch, on by default), then the slot
+ * Quick fills with its suggestions ([data-quissly-overlay-results]; empty - and
+ * invisible - when Quick is off).
  * Typing and pressing Enter goes to the normal results URL. Framework-free
  * vanilla JS (Luma + Hyvä), CSP-safe.
  *
@@ -25,7 +27,7 @@
     var nativeInput = document.getElementById('search') ||
         document.querySelector('form[action*="catalogsearch"] input[type="text"], form[action*="catalogsearch"] input[type="search"]');
 
-    var backdrop, panel, input, lastFocus;
+    var backdrop, panel, input, lastFocus, suggestPanel;
 
     // Search bar suggestions (the Shopify app's typing animation): the merchant's
     // list, kept in Quissly (Model/Search/SearchSuggestions), typed letter by letter
@@ -39,6 +41,19 @@
         suggestions = [];
     }
     suggestions = (Array.isArray(suggestions) ? suggestions : []).filter(function (q) {
+        return typeof q === 'string' && q.trim() !== '';
+    });
+
+    // The suggestion buttons under the empty bar: a list of their own (OverlayConfig::
+    // chipsJson) - what Quissly generated (Automatic) or the merchant's (Manual), as the
+    // Shopify app's "Search suggestions" setting; never the typing list.
+    var chipQueries = [];
+    try {
+        chipQueries = JSON.parse(host.getAttribute('data-chips') || '[]');
+    } catch (e) {
+        chipQueries = [];
+    }
+    chipQueries = (Array.isArray(chipQueries) ? chipQueries : []).filter(function (q) {
         return typeof q === 'string' && q.trim() !== '';
     });
     var typingTimer = null;
@@ -152,6 +167,10 @@
         results.setAttribute('data-quissly-overlay-results', '');
 
         panel.appendChild(bar);
+        suggestPanel = buildSuggestPanel();
+        if (suggestPanel) {
+            panel.appendChild(suggestPanel);
+        }
         panel.appendChild(results);
         backdrop.appendChild(panel);
         document.body.appendChild(backdrop);
@@ -169,6 +188,7 @@
             } else if (backdrop.classList.contains('is-open')) {
                 startTyping();
             }
+            syncSuggestPanel();
         });
         input.addEventListener('keydown', function (e) {
             if (e.key === 'Enter') {
@@ -179,6 +199,163 @@
                 close();
             }
         });
+    }
+
+    /**
+     * "<Store> suggestions": suggestions as buttons under the empty bar (the merchant's
+     * switch, on by default; which ones, chipQueries). A click searches for that suggestion.
+     * Null when it is switched off or there is nothing to show.
+     *
+     * @returns {HTMLElement|null}
+     */
+    function buildSuggestPanel() {
+        var showChips = host.getAttribute('data-suggestions-panel') === '1' && chipQueries.length > 0;
+        var loved = [];
+        try {
+            loved = JSON.parse(host.getAttribute('data-most-loved') || '[]');
+        } catch (e) {
+            loved = [];
+        }
+        loved = Array.isArray(loved) ? loved : [];
+        if (!showChips && !loved.length) {
+            return null;
+        }
+        var ns = 'http://www.w3.org/2000/svg';
+        var section = document.createElement('section');
+        section.className = 'quissly-overlay__suggest';
+        if (!showChips) {
+            section.setAttribute('aria-label', host.getAttribute('data-label-most-loved') || 'Most loved');
+            section.appendChild(buildLoved(loved));
+            return section;
+        }
+
+        var title = document.createElement('p');
+        title.className = 'quissly-overlay__suggest-title';
+        // A lightbulb, as the reference design; decorative.
+        var bulb = document.createElementNS(ns, 'svg');
+        bulb.setAttribute('viewBox', '0 0 24 24');
+        bulb.setAttribute('aria-hidden', 'true');
+        var glass = document.createElementNS(ns, 'path');
+        glass.setAttribute('d', 'M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.3 1.1 2.2h5c0-.9.4-1.6 1.1-2.2A6 6 0 0 0 12 3z');
+        bulb.appendChild(glass);
+        title.appendChild(bulb);
+        var heading = document.createElement('span');
+        heading.textContent = host.getAttribute('data-label-suggestions') || 'Suggestions';
+        title.appendChild(heading);
+        section.setAttribute('aria-label', heading.textContent);
+        section.appendChild(title);
+
+        var chips = document.createElement('div');
+        chips.className = 'quissly-overlay__chips';
+        chipQueries.slice(0, 10).forEach(function (query) {
+            var chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'quissly-overlay__chip';
+            var label = document.createElement('span');
+            label.textContent = query;
+            chip.appendChild(label);
+            // The up-left arrow: "use this search".
+            var arrow = document.createElementNS(ns, 'svg');
+            arrow.setAttribute('viewBox', '0 0 24 24');
+            arrow.setAttribute('aria-hidden', 'true');
+            var stroke = document.createElementNS(ns, 'path');
+            stroke.setAttribute('d', 'M17 17L7 7M7 15V7h8');
+            arrow.appendChild(stroke);
+            chip.appendChild(arrow);
+            chip.addEventListener('click', function () {
+                input.value = query;
+                submit();
+            });
+            chips.appendChild(chip);
+        });
+        section.appendChild(chips);
+        if (loved.length) {
+            section.appendChild(buildLoved(loved));
+        }
+        return section;
+    }
+
+    /**
+     * "<Store> Most loved": the merchant's picked products as cards (the Shopify app's) - image,
+     * name, price, star rating and how many options. The server already left out what cannot
+     * be bought and kept 8.
+     *
+     * @param {Array} items cards: {title, url, image, price, rating, ratingCount, variants}
+     * @returns {HTMLElement}
+     */
+    function buildLoved(items) {
+        var block = document.createElement('div');
+        block.className = 'quissly-overlay__loved';
+        var title = document.createElement('p');
+        title.className = 'quissly-overlay__loved-title';
+        title.textContent = host.getAttribute('data-label-most-loved') || 'Most loved';
+        block.appendChild(title);
+        var grid = document.createElement('div');
+        grid.className = 'quissly-overlay__loved-grid';
+        items.forEach(function (item) {
+            var card = document.createElement('a');
+            card.className = 'quissly-overlay__loved-card';
+            card.href = /^https?:\/\//i.test(String(item.url || '')) ? item.url : '#';
+            var media = document.createElement('span');
+            media.className = 'quissly-overlay__loved-media';
+            if (item.image && /^https?:\/\//i.test(String(item.image))) {
+                var img = document.createElement('img');
+                img.src = item.image;
+                img.alt = '';
+                img.loading = 'lazy';
+                media.appendChild(img);
+            }
+            card.appendChild(media);
+            var info = document.createElement('span');
+            info.className = 'quissly-overlay__loved-info';
+            var name = document.createElement('span');
+            name.className = 'quissly-overlay__loved-name';
+            name.textContent = item.title || '';
+            info.appendChild(name);
+            var meta = document.createElement('span');
+            meta.className = 'quissly-overlay__loved-meta';
+            var price = document.createElement('span');
+            price.className = 'quissly-overlay__loved-price';
+            price.textContent = item.price || '';
+            meta.appendChild(price);
+            var rating = Number(item.rating);
+            if (rating > 0) {
+                var rate = document.createElement('span');
+                rate.className = 'quissly-overlay__loved-rating';
+                rate.setAttribute('aria-label', String(host.getAttribute('data-label-rating') || '%1 out of 5').replace('%1', rating.toFixed(1)));
+                var stars = document.createElement('span');
+                stars.className = 'quissly-overlay__loved-stars';
+                stars.setAttribute('aria-hidden', 'true');
+                stars.textContent = '★★★★★';
+                var filled = document.createElement('span');
+                filled.style.width = Math.min(100, (rating / 5) * 100) + '%';
+                filled.textContent = '★★★★★';
+                stars.appendChild(filled);
+                rate.appendChild(stars);
+                if (Number(item.ratingCount) > 0) {
+                    rate.appendChild(document.createTextNode('(' + Number(item.ratingCount) + ')'));
+                }
+                meta.appendChild(rate);
+            }
+            info.appendChild(meta);
+            if (item.variants) {
+                var variants = document.createElement('span');
+                variants.className = 'quissly-overlay__loved-variants';
+                variants.textContent = item.variants;
+                info.appendChild(variants);
+            }
+            card.appendChild(info);
+            grid.appendChild(card);
+        });
+        block.appendChild(grid);
+        return block;
+    }
+
+    /** The suggestions show while the bar is empty; typing hands the space to Quick. */
+    function syncSuggestPanel() {
+        if (suggestPanel) {
+            suggestPanel.hidden = !!(input && input.value.trim());
+        }
     }
 
     /**
@@ -212,6 +389,7 @@
         input.value = (nativeInput && nativeInput.value) || '';
         document.documentElement.classList.add('quissly-overlay-open');
         backdrop.classList.add('is-open');
+        syncSuggestPanel();
         input.focus();
         input.select();
         // Let Quick catch up with the carried-over text: suggestions for it,

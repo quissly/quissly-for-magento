@@ -14,8 +14,7 @@ use Magento\Framework\HTTP\Client\CurlFactory;
  * Signed transport to api.quissly.com.
  *
  * One constant per signed endpoint path (the path is part of the v2
- * signature). X-Platform: magento is accepted since backend
- * commit 5181564a (live-verified 2026-08-14).
+ * signature). Quissly's API accepts X-Platform: magento.
  */
 class HttpClient
 {
@@ -28,6 +27,8 @@ class HttpClient
     public const PATH_QSEARCH = '/v2beta/qsearch';
     public const PATH_QUICK = '/v2beta/quick';
     public const PATH_QIMAGE = '/v2beta/qimage';
+    public const PATH_SUGGESTIONS_ENRICH = '/v2beta/qsearch/suggestions_enrich';
+    public const PATH_EVENTS = '/v2beta/qsearch/events';
     public const PATH_CATALOG = '/v1beta/catalog';
     public const X_PLATFORM = 'magento';
 

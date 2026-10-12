@@ -10,7 +10,7 @@ namespace Quissly\Search\Block\Adminhtml;
 /**
  * Quissly Billing: the store's plans, this month's usage and its invoices.
  *
- * Everything Quissly's store billing API offers a store after Setup (STORE_BILLING_API.md),
+ * Everything Quissly's store billing API offers a store after Setup,
  * laid out as the Shopify app's Settings billing column: a current-plan card per product
  * (search, chat) with its status, banners and the plan picker, then Usage and Extra
  * requests; invoices and the card on file on the right. A product with no plan offers the
@@ -20,6 +20,19 @@ class Billing extends Setup
 {
     /** The products a store can buy, in the order they are shown. */
     public const FAMILIES = ['qsearch', 'qchat'];
+
+    /** Automatic top-up's maximum a month: one block at least, 50 at most (Quissly refuses outside). */
+    public const TOPUP_MAX_BLOCKS = 50;
+
+    /** The maximum suggested when it is first switched on, in blocks. */
+    public const TOPUP_DEFAULT_BLOCKS = 3;
+
+    /** The policies the billing screen links to. */
+    public const LINKS = [
+        'refund' => 'https://quissly.com/legal/refund-policy',
+        'terms' => 'https://quissly.com/legal/terms',
+        'privacy' => 'https://quissly.com/legal/privacy-policy',
+    ];
 
     /** @var array|null|false Built once per request; false = not built yet */
     private $view = false;
@@ -49,6 +62,13 @@ class Billing extends Setup
                 'titlePay' => (string)__('Waiting for the payment'),
                 'titleError' => (string)__('Something went wrong'),
                 'confirmCancel' => (string)__('Cancel plan'),
+                'titleRefund' => (string)__('Request a refund'),
+                'titleClaim' => (string)__('Ask for a refund'),
+                'confirmRefund' => (string)__('Refund'),
+                'sendClaim' => (string)__('Send request'),
+                'claimLength' => (string)__('Tell us what happened in %1 to %2 characters.', 10, 4000),
+                'claimCount' => (string)__('%1 / %2'),
+                'topupRange' => (string)__('Enter a monthly maximum from %1 to %2.'),
             ],
         ]);
     }
@@ -162,6 +182,9 @@ class Billing extends Setup
                 $this->money((float)$extra['price'], $currency),
                 number_format((int)$extra['requests'])
             );
+            if ($this->rate($extra, $family, $currency) !== '') {
+                $feats[] = $this->rate($extra, $family, $currency);
+            }
             $feats[] = (string)__('Unused extra requests carry over');
         } else {
             $feats[] = (string)__('No extra requests');
@@ -178,7 +201,91 @@ class Billing extends Setup
                 ? (string)__('%1-day free trial', $trialDays)
                 : '',
             'feats' => $feats,
+            'topup' => !$free ? $this->topup($extra, $family, $currency) : null,
         ];
+    }
+
+    /**
+     * Automatic top-up's limits and words for a plan that sells blocks; null for one that does not.
+     *
+     * @param mixed $extra The quota's extra_block
+     * @param string $family
+     * @param string $currency
+     * @param float|null $current The live plan's maximum, when it is on
+     * @return array|null {min, max, default, min_text, max_text, rate, hint}
+     */
+    private function topup($extra, string $family, string $currency, ?float $current = null): ?array
+    {
+        $price = is_array($extra) ? (float)($extra['price'] ?? 0) : 0.0;
+        if ($price <= 0) {
+            return null;
+        }
+        $max = $price * self::TOPUP_MAX_BLOCKS;
+        return [
+            'min' => $this->number($price),
+            'max' => $this->number($max),
+            'default' => $this->number($current ?? $price * self::TOPUP_DEFAULT_BLOCKS),
+            'min_text' => $this->money($price, $currency),
+            'max_text' => $this->money($max, $currency),
+            'rate' => $this->rate($extra, $family, $currency),
+            'hint' => (string)__(
+                'One block of %1 requests (%2) at a time, up to this much a month.',
+                number_format((int)($extra['requests'] ?? 0)),
+                $this->money($price, $currency)
+            ),
+        ];
+    }
+
+    /**
+     * The picker card's automatic top-up limits as data-at-* attributes; '' for a plan without.
+     *
+     * @param array|null $topup What topup() answered
+     * @return string
+     */
+    public function topupAttributesHtml(?array $topup): string
+    {
+        if ($topup === null) {
+            return '';
+        }
+        $html = '';
+        foreach (['min', 'max', 'default', 'min_text', 'max_text', 'rate', 'hint'] as $key) {
+            $html .= ' data-at-' . str_replace('_', '-', $key) . '="' . $this->escapeHtmlAttr($topup[$key]) . '"';
+        }
+        return $html;
+    }
+
+    /**
+     * What one extra request costs: "$0.003 per search", "$0.012 per AI message"; '' when unknown.
+     *
+     * @param mixed $extra The quota's extra_block
+     * @param string $family
+     * @param string $currency
+     * @return string
+     */
+    private function rate($extra, string $family, string $currency): string
+    {
+        $rate = is_array($extra) ? (float)($extra['rate'] ?? 0) : 0.0;
+        if ($rate <= 0) {
+            return '';
+        }
+        $digits = rtrim(number_format($rate, 4, '.', ''), '0');
+        $digits = strlen(substr((string)strrchr($digits, '.'), 1)) < 2 ? number_format($rate, 2, '.', '') : $digits;
+        $symbols = ['USD' => '$', 'EUR' => '€', 'GBP' => '£'];
+        $amount = isset($symbols[$currency]) ? $symbols[$currency] . $digits : $currency . ' ' . $digits;
+        return $family === 'qchat'
+            ? (string)__('%1 per AI message', $amount)
+            : (string)__('%1 per search', $amount);
+    }
+
+    /**
+     * A dollar figure for an input: "45", "15.5".
+     *
+     * @param float $value
+     * @return string
+     */
+    private function number(float $value): string
+    {
+        return rtrim(rtrim(number_format($value, 2, '.', ''), '0'), '.');
     }
 
     /**
@@ -202,6 +309,9 @@ class Billing extends Setup
         $pending = $cards[(string)($sub['pending_plan_id'] ?? '')] ?? null;
         $extra = $card['raw']['quotas'][0]['extra_block'] ?? null;
         $id = (string)($sub['id'] ?? '');
+        $family = (string)($row['plan']['family'] ?? ($card['family'] ?? ''));
+        $budget = (float)($sub['overage_budget_usd'] ?? 0);
+        $autoOn = !empty($sub['auto_refill_enabled']) && $budget > 0;
 
         $meta = [];
         if ($free) {
@@ -210,6 +320,9 @@ class Billing extends Setup
             $meta[] = $annual
                 ? (string)__('%1 / year', $card['annual_total'])
                 : (string)__('%1 / month', $card['monthly']);
+        }
+        if ($autoOn) {
+            $meta[] = (string)__('auto top-up up to %1 a month', $this->money($budget, $currency));
         }
         if ($ends !== '' && !$free) {
             $meta[] = $cancelling
@@ -272,6 +385,16 @@ class Billing extends Setup
             'can_cancel' => $paddle && !$cancelling,
             'can_card' => $paddle,
             'can_topup' => $paddle && is_array($extra) && $status === 'active',
+            // Quissly allows it on a trial, active or past-due plan; never bought for one set to cancel.
+            'can_auto_topup' => $paddle && is_array($extra) && in_array($status, ['trial', 'active', 'past_due'], true)
+                && !$cancelling,
+            'auto_topup' => [
+                'on' => $autoOn,
+                'label' => $autoOn
+                    ? (string)__('Automatic top-up: up to %1 a month.', $this->money($budget, $currency))
+                    : (string)__('Automatic top-up is off.'),
+            ] + ($this->topup($extra, $family, $currency, $autoOn ? $budget : null) ?? []),
+            'can_refund' => $paddle && in_array($status, ['active', 'past_due'], true),
             'extra' => is_array($extra) ? [
                 'price' => $this->money((float)$extra['price'], $currency),
                 'requests' => number_format((int)$extra['requests']),

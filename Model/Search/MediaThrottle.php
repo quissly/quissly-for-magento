@@ -56,9 +56,10 @@ class MediaThrottle
      * rest of the window rather than being let through by backing off briefly.
      *
      * @param string $kind MediaSearchClient::KIND_*
+     * @param int $limit requests per window (the shopping-activity endpoint allows more)
      * @return bool
      */
-    public function allow(string $kind): bool
+    public function allow(string $kind, int $limit = self::LIMIT_PER_WINDOW): bool
     {
         $key = $this->key($kind);
         $count = (int)$this->cache->load($key) + 1;
@@ -70,7 +71,7 @@ class MediaThrottle
             self::WINDOW_SECONDS
         );
 
-        return $count <= self::LIMIT_PER_WINDOW;
+        return $count <= $limit;
     }
 
     /**

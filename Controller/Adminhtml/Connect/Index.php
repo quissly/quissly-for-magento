@@ -122,10 +122,26 @@ class Index extends Action implements HttpPostActionInterface
                 'message' => (string)($messages[$problem] ?? __('Enter a valid email address, like name@example.com.')),
             ]);
         }
+        // Quissly Setup asks for both (the Shopify app's rule); Configuration's Connect sends neither.
+        $description = $this->getRequest()->getParam('description');
+        if ($description !== null && (trim((string)$this->getRequest()->getParam('store_name')) === ''
+            || trim((string)$description) === '')
+        ) {
+            return $result->setData([
+                'ok' => false,
+                'message' => (string)__('Store name and what you sell are both required.'),
+            ]);
+        }
         if (!$this->input->isNameValid((string)$this->getRequest()->getParam('store_name'))) {
             return $result->setData([
                 'ok' => false,
-                'message' => (string)__('Use letters, numbers, spaces and hyphens in the store name.'),
+                'message' => (string)__('Store name can only contain letters, numbers, spaces and hyphens.'),
+            ]);
+        }
+        if (mb_strlen(trim((string)$description)) > 500) {
+            return $result->setData([
+                'ok' => false,
+                'message' => (string)__('Description must be 500 characters or fewer.'),
             ]);
         }
 

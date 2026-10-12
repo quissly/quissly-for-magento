@@ -2,23 +2,52 @@
  * Copyright © Quissly. All rights reserved.
  * See COPYING.txt for license details.
  *
- * Configuration > Quissly > Search bar suggestions: one list per store language, edited as pills
- * (the Shopify app's Settings: a Language select, the list, "Add a suggestion", "N of 20",
- * "Reset to generated"). Every list travels in ONE hidden field as JSON {language: [queries]};
- * Model/Config/Backend/SearchSuggestions writes the lists that changed to Quissly.
+ * Configuration > Quissly: the suggestion lists, edited as the Quissly Shopify app's Settings
+ * edits them. Vanilla, no framework.
  *
- * Config (JSON in data-config on [data-q-suggestions], built by SearchSuggestionsField):
- * {main, max, maxLength, languages: [{code, label, queries, generated, note}], text: {...}}.
- * Vanilla, no framework.
+ *  - Search Examples ([data-q-suggestions], SearchSuggestionsField): one list per store language
+ *    with a Language select, a row per example with Remove, "Add a suggestion", "N of 20" and
+ *    "Reset to generated". Every list travels in ONE hidden field as JSON {language: [queries]};
+ *    Model/Config/Backend/SearchSuggestions writes the lists that changed to Quissly.
+ *    Config (data-config): {main, max, maxLength, languages: [{code, label, queries, generated,
+ *    note}], text: {...}}.
+ *  - Search Suggestions, Manual ([data-q-fields], ButtonsField): one list per language, a field
+ *    per suggestion and one empty field after them ("fill one and the next field appears"), up to
+ *    max. Also one hidden JSON field; Model/Config/Backend/ManualButtons writes them to Quissly.
+ *    Config: {max, maxLength, languages: [{code, label, queries}], text: {field, placeholder}}.
+ *  - The "Suggestions" select's note and the read-only Automatic buttons ([data-q-mode-note],
+ *    [data-q-auto]) follow the select.
  */
 (function () {
     'use strict';
 
-    function init(root) {
-        var config;
+    function key(query) {
+        return query.trim().replace(/\s+/g, ' ').toLowerCase();
+    }
+
+    function el(tag, className, text) {
+        var node = document.createElement(tag);
+        if (className) {
+            node.className = className;
+        }
+        if (text) {
+            node.textContent = text;
+        }
+        return node;
+    }
+
+    function readConfig(root) {
         try {
-            config = JSON.parse(root.getAttribute('data-config') || '{}');
+            return JSON.parse(root.getAttribute('data-config') || '{}');
         } catch (e) {
+            return null;
+        }
+    }
+
+    /** Search Examples: rows with Remove, per language. */
+    function examples(root) {
+        var config = readConfig(root);
+        if (!config) {
             return;
         }
         var text = config.text || {};
@@ -32,7 +61,7 @@
 
         var field = root.querySelector('[data-q-value]');
         var select = root.querySelector('[data-q-language]');
-        var pills = root.querySelector('[data-q-pills]');
+        var rows = root.querySelector('[data-q-rows]');
         var input = root.querySelector('[data-q-new]');
         var add = root.querySelector('[data-q-add]');
         var count = root.querySelector('[data-q-count]');
@@ -40,42 +69,25 @@
         var note = root.querySelector('[data-q-note]');
         var error = root.querySelector('[data-q-error]');
 
-        function key(query) {
-            return query.trim().replace(/\s+/g, ' ').toLowerCase();
-        }
-
-        function store() {
-            field.value = JSON.stringify(lists);
-        }
-
         function render() {
             var list = lists[current] || [];
-            pills.textContent = '';
+            rows.textContent = '';
             list.forEach(function (query, index) {
-                var pill = document.createElement('span');
-                pill.className = 'q-pill';
-                var label = document.createElement('span');
-                label.className = 'q-pill__text';
-                label.textContent = query;
-                var remove = document.createElement('button');
+                var row = el('div', 'q-row');
+                row.appendChild(el('span', 'q-row__text', query));
+                var remove = el('button', 'q-row__remove', text.remove || 'Remove');
                 remove.type = 'button';
-                remove.className = 'q-pill__remove';
                 remove.setAttribute('aria-label', (text.remove || 'Remove') + ': ' + query);
-                remove.textContent = '×';
                 remove.addEventListener('click', function () {
                     list.splice(index, 1);
                     render();
                     input.focus();
                 });
-                pill.appendChild(label);
-                pill.appendChild(remove);
-                pills.appendChild(pill);
+                row.appendChild(remove);
+                rows.appendChild(row);
             });
             if (!list.length) {
-                var empty = document.createElement('span');
-                empty.className = 'q-pills__empty';
-                empty.textContent = current === config.main ? (text.emptyMain || '') : (text.emptyOther || '');
-                pills.appendChild(empty);
+                rows.appendChild(el('p', 'q-rows__empty', current === config.main ? (text.emptyMain || '') : (text.emptyOther || '')));
             }
             count.textContent = (text.count || '%1 of %2').split('%1').join(list.length).split('%2').join(config.max);
             count.classList.toggle('is-over', list.length > config.max);
@@ -86,13 +98,13 @@
             note.textContent = !list.length && language.note ? language.note : '';
             note.hidden = note.textContent === '';
             error.hidden = true;
-            store();
+            field.value = JSON.stringify(lists);
         }
 
         function addQuery() {
             var query = input.value.trim().replace(/\s+/g, ' ');
             var list = lists[current] || (lists[current] = []);
-            if (query === '') {
+            if (query === '' || list.length >= config.max) {
                 return;
             }
             if (query.length > config.maxLength) {
@@ -100,15 +112,10 @@
                 error.hidden = false;
                 return;
             }
-            if (list.some(function (q) { return key(q) === key(query); })) {
-                error.textContent = text.duplicate || '';
-                error.hidden = false;
-                return;
+            // A repeat is dropped, as the Shopify app does.
+            if (!list.some(function (q) { return key(q) === key(query); })) {
+                list.push(query);
             }
-            if (list.length >= config.max) {
-                return;
-            }
-            list.push(query);
             input.value = '';
             render();
             input.focus();
@@ -135,8 +142,112 @@
         render();
     }
 
+    /** Search Suggestions, Manual: a field per suggestion, per language. */
+    function fields(root) {
+        var config = readConfig(root);
+        if (!config) {
+            return;
+        }
+        var text = config.text || {};
+        var lists = {};
+        (config.languages || []).forEach(function (language) {
+            lists[language.code] = (language.queries || []).slice(0, config.max);
+        });
+        var current = (config.languages || [{}])[0].code;
+        var field = root.querySelector('[data-q-value]');
+        var box = root.querySelector('[data-q-list]');
+        var select = root.querySelector('[data-q-language]');
+
+        function store() {
+            var out = {};
+            Object.keys(lists).forEach(function (code) {
+                out[code] = lists[code].filter(function (q) { return q.trim() !== ''; }).map(function (q) {
+                    return q.trim().replace(/\s+/g, ' ');
+                });
+            });
+            field.value = JSON.stringify(out);
+        }
+
+        function input(index) {
+            var wrap = el('div', 'q-field');
+            var control = el('input', 'input-text admin__control-text');
+            control.type = 'text';
+            control.maxLength = config.maxLength;
+            control.id = field.id + '_' + current + '_' + index;
+            control.value = lists[current][index] || '';
+            if (index === 0) {
+                control.placeholder = text.placeholder || '';
+            }
+            control.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                }
+            });
+            control.addEventListener('input', function () {
+                var list = lists[current];
+                list[Array.prototype.indexOf.call(box.children, wrap)] = control.value;
+                // The trailing empty ones go, as the Shopify app's fields do.
+                while (list.length && !String(list[list.length - 1]).trim()) {
+                    list.pop();
+                }
+                sync();
+                store();
+            });
+            var label = el('label', 'q-field__label', (text.field || '%1').split('%1').join(index + 1));
+            label.htmlFor = control.id;
+            wrap.appendChild(label);
+            wrap.appendChild(control);
+            return wrap;
+        }
+
+        // Every filled field plus one empty one, up to max.
+        function sync() {
+            var wanted = Math.min(lists[current].length + 1, config.max);
+            while (box.children.length < wanted) {
+                box.appendChild(input(box.children.length));
+            }
+            while (box.children.length > wanted) {
+                box.removeChild(box.lastChild);
+            }
+        }
+
+        function render() {
+            box.textContent = '';
+            sync();
+        }
+
+        if (select) {
+            select.addEventListener('change', function () {
+                current = select.value;
+                render();
+            });
+        }
+        render();
+        store();
+    }
+
+    /** The "Suggestions" select: its note and the read-only Automatic buttons follow it. */
+    function mode(note) {
+        var cell = note.closest('td') || note.parentNode;
+        var select = cell.querySelector('select');
+        var automatic = cell.querySelector('[data-q-auto]');
+        if (!select) {
+            return;
+        }
+        function sync() {
+            note.textContent = note.getAttribute('data-' + select.value) || '';
+            if (automatic) {
+                automatic.hidden = select.value === 'manual';
+            }
+        }
+        select.addEventListener('change', sync);
+        sync();
+    }
+
     function boot() {
-        Array.prototype.forEach.call(document.querySelectorAll('[data-q-suggestions]'), init);
+        Array.prototype.forEach.call(document.querySelectorAll('[data-q-suggestions]'), examples);
+        Array.prototype.forEach.call(document.querySelectorAll('[data-q-fields]'), fields);
+        Array.prototype.forEach.call(document.querySelectorAll('[data-q-mode-note]'), mode);
     }
 
     if (document.readyState === 'loading') {

@@ -11,6 +11,7 @@ use Magento\Framework\UrlInterface;
 use Magento\Framework\View\Element\Block\ArgumentInterface;
 use Magento\Store\Model\StoreManagerInterface;
 use Quissly\Search\Model\Config\Settings;
+use Quissly\Search\Model\Search\MostLoved;
 use Quissly\Search\Model\Search\SearchSuggestions;
 use Quissly\Search\Model\Search\SuggestionLanguage;
 use Quissly\Search\Model\Sync\SyncCompletion;
@@ -50,6 +51,7 @@ class OverlayConfig implements ArgumentInterface
      * @param StoreManagerInterface $storeManager
      * @param SearchSuggestions $suggestions
      * @param SuggestionLanguage $languages
+     * @param MostLoved $mostLoved
      */
     public function __construct(
         private readonly Settings $settings,
@@ -57,8 +59,44 @@ class OverlayConfig implements ArgumentInterface
         private readonly SyncCompletion $completion,
         private readonly StoreManagerInterface $storeManager,
         private readonly SearchSuggestions $suggestions,
-        private readonly SuggestionLanguage $languages
+        private readonly SuggestionLanguage $languages,
+        private readonly MostLoved $mostLoved
     ) {
+    }
+
+    /**
+     * The merchant's Most loved products for this store view, as JSON cards.
+     *
+     * None while off or short of picks (Model/Search/MostLoved). Part of the cached page, like chipsJson().
+     *
+     * @return string
+     */
+    public function mostLovedJson(): string
+    {
+        try {
+            $storeId = (int)$this->storeManager->getStore()->getId();
+        } catch (\Throwable $e) {
+            return '[]';
+        }
+        return (string)json_encode(
+            $this->mostLoved->forStorefront($this->websiteId(), $storeId),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        );
+    }
+
+    /**
+     * The heading over them: "<store name> Most loved".
+     *
+     * @return string
+     */
+    public function mostLovedTitle(): string
+    {
+        try {
+            $name = trim((string)$this->storeManager->getStore()->getFrontendName());
+        } catch (\Throwable $e) {
+            $name = '';
+        }
+        return $name !== '' ? (string)__('%1 Most loved', $name) : (string)__('Most loved');
     }
 
     /**
@@ -107,6 +145,51 @@ class OverlayConfig implements ArgumentInterface
     public function isImmersive(): bool
     {
         return $this->settings->isOverlayEnabled($this->websiteId());
+    }
+
+    /**
+     * Whether the suggestions show under the bar as buttons (default ON).
+     *
+     * @return bool
+     */
+    public function showsSuggestionsPanel(): bool
+    {
+        return $this->settings->isOverlaySuggestionsEnabled($this->websiteId());
+    }
+
+    /**
+     * The buttons themselves, as JSON: the merchant's own list (Manual), or what Quissly
+     * generated for this store view's language (Automatic, the default - none until Quissly
+     * has generated some). At most SearchSuggestions::MAX_CHIPS. Part of the cached page,
+     * like suggestionsJson().
+     *
+     * @return string
+     */
+    public function chipsJson(): string
+    {
+        try {
+            $language = $this->languages->storeLanguage((int)$this->storeManager->getStore()->getId());
+        } catch (\Throwable $e) {
+            $language = '';
+        }
+        // Manual or generated, as Quissly holds the choice (the Shopify app's keys).
+        $chips = $this->suggestions->buttonsForStorefront($this->websiteId(), $language);
+        return (string)json_encode(array_values($chips), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * The heading over them: "<store name> suggestions" (the overlay writes it in capitals).
+     *
+     * @return string
+     */
+    public function suggestionsTitle(): string
+    {
+        try {
+            $name = trim((string)$this->storeManager->getStore()->getFrontendName());
+        } catch (\Throwable $e) {
+            $name = '';
+        }
+        return $name !== '' ? (string)__('%1 suggestions', $name) : (string)__('Suggestions');
     }
 
     /**

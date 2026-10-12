@@ -85,6 +85,21 @@
     -->
     <!-- Console-host clients: same log destination as the search clients, or
          their failures land in system.log where nobody looks for them. -->
+    <type name="Quissly\Search\Model\Search\ShowcaseRunner">
+        <arguments>
+            <argument name="logger" xsi:type="object">Quissly\Search\Logger\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Quissly\Search\Model\Events\Recorder">
+        <arguments>
+            <argument name="logger" xsi:type="object">Quissly\Search\Logger\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Quissly\Search\Model\Events\EventSender">
+        <arguments>
+            <argument name="logger" xsi:type="object">Quissly\Search\Logger\Logger</argument>
+        </arguments>
+    </type>
     <type name="Quissly\Search\Model\Update\Updater">
         <arguments>
             <argument name="logger" xsi:type="object">Quissly\Search\Logger\Logger</argument>

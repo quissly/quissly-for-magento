@@ -24,7 +24,10 @@ use Quissly\Search\Model\Sync\SyncWorker;
  * Three steps - Your details (Connect), Choose a plan, Go live - and the first
  * catalog sync starts on its own in between, once the service Connect created
  * has settled (ConnectHold). Going live is the merchant's own click: it
- * switches Quissly search on, and only once the first sync has finished.
+ * switches on what the chosen plan includes - search, and with a chat plan the
+ * assistant - and only once the first sync has finished. The plan is chosen
+ * once: after that its step is closed until Setup is finished (the Shopify
+ * app's rule; Billing changes it).
  *
  * Setup works at the default scope for the default website, the storefront
  * Connect registers. Further websites are connected from Configuration as
@@ -45,6 +48,10 @@ class Onboarding
     private const STATUS_COMPLETE = 'complete';
 
     private const PATH_ENABLE_SEARCH = 'quissly/features/enable_search';
+    private const PATH_ENABLE_QCHAT = 'quissly/features/enable_qchat';
+
+    /** The products a plan can include. */
+    private const SERVICES = ['qsearch', 'qchat'];
     private const PATH_QCHAT_AGENT_ID = 'quissly/features/qchat_agent_id';
 
     /**
@@ -117,13 +124,67 @@ class Onboarding
     /**
      * The plan step is done: a plan is live, or the merchant was let through without one.
      *
+     * @param string[] $families the plan's products (qsearch, qchat); none = not known
      * @return void
      */
-    public function planChosen(): void
+    public function planChosen(array $families = []): void
     {
         $state = $this->state() ?? ['status' => self::STATUS_IN_PROGRESS];
         $state['plan'] = true;
+        $state['services'] = array_values(array_intersect(self::SERVICES, $families));
         $this->save($state);
+    }
+
+    /**
+     * A paid plan the merchant chose to pay by manual invoice.
+     *
+     * Quissly's store billing API has no invoice option yet, so the choice is kept here (and
+     * logged) and the plan step goes straight on to Go live, with no payment page.
+     *
+     * @param string $planId
+     * @param string $planName
+     * @param string $family qsearch | qchat
+     * @param string $cycle monthly | annual
+     * @return void
+     */
+    public function invoiceChosen(string $planId, string $planName, string $family, string $cycle): void
+    {
+        $this->planChosen([$family]);
+        $state = $this->state() ?? [];
+        $state['invoice'] = [
+            'plan_id' => $planId,
+            'plan' => $planName,
+            'family' => $family,
+            'cycle' => $cycle === 'annual' ? 'annual' : 'monthly',
+            'at' => time(),
+        ];
+        $this->save($state);
+        $this->logger->info(sprintf(
+            '[quissly] setup: plan chosen for manual invoice: %s, billed %s',
+            $planName,
+            $state['invoice']['cycle']
+        ));
+    }
+
+    /**
+     * Whether the plan is chosen and Setup is not finished: the plan step is then closed.
+     *
+     * @return bool
+     */
+    public function isPlanLocked(): bool
+    {
+        $state = $this->state();
+        return !empty($state['plan']) && ($state['status'] ?? '') !== self::STATUS_COMPLETE;
+    }
+
+    /**
+     * The chosen plan's products; none when Setup never saw the plan (then it counts as search).
+     *
+     * @return string[]
+     */
+    public function services(): array
+    {
+        return array_values(array_intersect(self::SERVICES, (array)($this->state()['services'] ?? [])));
     }
 
     /**
@@ -208,7 +269,7 @@ class Onboarding
     }
 
     /**
-     * Finish Setup without going live (the Shopify app's "Save changes").
+     * Finish Setup without going live (the Shopify app's "Do this later").
      *
      * For a merchant not ready to switch search on yet - or whose first sync needs another
      * look - so nobody is held on this screen. Needs the account's services built (the
@@ -244,13 +305,16 @@ class Onboarding
     }
 
     /**
-     * The progress list on the Go live step.
+     * Where Setup stands for the Go live step (the Shopify app's account setup card).
      *
-     * The Shopify app's rows: store identity, organization, project, QSearch service, QChat
-     * service, catalog import. Here one Connect call creates the first three at once, and the
-     * two services are built in the settling period after it.
+     * A phase - building (the services are being built), importing, failed (no products got
+     * through) or ready - and the rows: one "Quissly Account" row (store identity, organization
+     * and project: one Connect call creates all three), search, the assistant (with a chat plan,
+     * or no plan known - QChat finds products through the search service, so search is always
+     * listed) and the catalog. A done row has no words; the raw problem behind a failed import
+     * is kept apart, for "Technical details".
      *
-     * @return array{ready: bool, failed: bool, saveable: bool, rows: array<string, array>}
+     * @return array{phase: string, ready: bool, failed: bool, saveable: bool, technical: string, rows: array}
      */
     public function status(): array
     {
@@ -260,46 +324,72 @@ class Onboarding
         $progress = $this->worker->progress($websiteId);
         $ready = $connected && $this->completion->isComplete($websiteId);
         $failed = !$ready && $this->syncFailed($progress);
-
-        $created = $this->row($connected ? 'done' : 'pending', '');
-        $building = !$connected ? 'pending' : ($hold > 0 ? 'running' : 'done');
+        $building = !$connected || $hold > 0;
+        // Finish waits for the account too (the Shopify app's gate), even over a catalog already in Quissly.
+        $ready = $ready && !$building;
+        $services = $this->services();
         $chat = $this->settings->qchatAgentId($websiteId) !== null;
-        $rows = [
-            'store' => $created,
-            'organization' => $created,
-            'project' => $created,
-            'qsearch' => $this->row(
-                $building,
-                $hold > 0 ? (string)__('Quissly is building your search service.') : ''
-            ),
-            'qchat' => $chat || $building !== 'done'
-                ? $this->row($building, '')
-                : $this->row('pending', (string)__('Not found yet - chat can still be switched on later.')),
-            'catalog' => $this->catalogRow($connected, $hold, $progress, $ready, $failed),
-        ];
+
+        $service = fn (string $running): array => !$connected
+            ? $this->row('pending', (string)__('Up next'))
+            : ($building ? $this->row('running', $running) : $this->row('done', ''));
+        if ($services !== [] && !in_array('qchat', $services, true)) {
+            $chatRow = $this->row('done', '', true);
+        } elseif ($chat || $building) {
+            $chatRow = $service((string)__('Setting up the assistant'));
+        } else {
+            $chatRow = $this->row(
+                'pending',
+                (string)__('Not ready yet - you can switch chat on later in Configuration.')
+            );
+        }
 
         return [
+            'phase' => $building ? 'building' : ($ready ? 'ready' : ($failed ? 'failed' : 'importing')),
             'ready' => $ready,
             'failed' => $failed,
             'saveable' => $connected && $hold === 0,
-            'rows' => $rows,
+            'technical' => $failed
+                ? (!empty($progress['gate_blocked'])
+                    ? (string)__('No products reached Quissly. The sync log on the Dashboard has the details.')
+                    : (string)__('The sync stopped before it finished.'))
+                : '',
+            'rows' => [
+                'account' => $connected
+                    ? $this->row('done', '')
+                    : $this->row('running', (string)__('Creating your account')),
+                'qsearch' => $service((string)__('Setting up search')),
+                'qchat' => $chatRow,
+                'catalog' => $this->catalogRow($building, $progress, $ready, $failed),
+            ],
         ];
     }
 
     /**
-     * Go live: switch Quissly search on and finish Setup.
+     * Go live: switch on what the plan includes and finish Setup.
+     *
+     * Search (also with no plan known), and the assistant with a chat plan once its agent is
+     * known; a chat-only plan leaves search off.
      *
      * @return bool false while the first sync has not finished
      */
     public function goLive(): bool
     {
-        if (!$this->isConnected() || !$this->completion->isComplete($this->websiteId())) {
+        if (!$this->isConnected() || !$this->completion->isComplete($this->websiteId())
+            || $this->hold->remainingSeconds($this->websiteId()) > 0
+        ) {
             return false;
         }
         // Default scope, like Connect: the setting every website inherits. A
         // website whose own first sync has not run stays on native search
         // regardless, because the interceptor also asks its gate.
-        $this->configWriter->save(self::PATH_ENABLE_SEARCH, '1');
+        $services = $this->services();
+        if ($services === [] || in_array('qsearch', $services, true)) {
+            $this->configWriter->save(self::PATH_ENABLE_SEARCH, '1');
+        }
+        if (in_array('qchat', $services, true) && $this->settings->qchatAgentId($this->websiteId()) !== null) {
+            $this->configWriter->save(self::PATH_ENABLE_QCHAT, '1');
+        }
         $this->reinitableConfig->reinit();
         // Written through the config WRITER, which runs no backend model, so
         // the storefront caches are cleaned here (StorefrontSetting's job).
@@ -310,39 +400,44 @@ class Onboarding
         $state = $this->state() ?? [];
         $state['status'] = self::STATUS_COMPLETE;
         $this->save($state);
-        $this->logger->info(sprintf('[quissly] setup finished, search live website=%d', $this->websiteId()));
+        $this->logger->info(sprintf(
+            '[quissly] setup finished, %s live website=%d',
+            $services === [] ? 'qsearch' : implode(' and ', $services),
+            $this->websiteId()
+        ));
         return true;
     }
 
     /**
      * The catalog row, from the sync's own progress record.
      *
-     * @param bool $connected
-     * @param int $hold
+     * @param bool $building
      * @param array|null $progress
      * @param bool $ready
      * @param bool $failed
-     * @return array{state: string, detail: string}
+     * @return array{state: string, detail: string, hidden: bool}
      */
-    private function catalogRow(bool $connected, int $hold, ?array $progress, bool $ready, bool $failed): array
+    private function catalogRow(bool $building, ?array $progress, bool $ready, bool $failed): array
     {
         $total = (int)($progress['total'] ?? 0);
         $sent = (int)($progress['ok'] ?? 0);
         if ($ready) {
-            return $this->row('done', $sent > 0 ? (string)__('%1 products sent.', $sent) : '');
+            return $this->row('done', '');
         }
         if ($failed) {
-            return $this->row('failed', !empty($progress['gate_blocked'])
-                ? (string)__('No products reached Quissly. Check the log, then start the sync again.')
-                : (string)__('The sync stopped before it finished. Start it again to continue.'));
+            return $this->row('failed', (string)__(
+                'Catalog import failed. Start it again below, or finish setup and retry from the Dashboard.'
+            ));
         }
         if ($progress !== null) {
-            return $this->row('running', (string)__('%1 of %2 products sent.', $sent, $total));
+            return $this->row('running', $sent === 0
+                ? (string)__('Reading your products...')
+                : (string)__('Importing your products - %1 of %2', $sent, $total));
         }
-        if ($connected && $hold === 0) {
-            return $this->row('running', (string)__('Starting...'));
+        if (!$building) {
+            return $this->row('running', (string)__('Starting shortly'));
         }
-        return $this->row('pending', (string)__('Starts as soon as the search service is ready.'));
+        return $this->row('pending', (string)__('Starts once your account is ready'));
     }
 
     /**
@@ -379,11 +474,12 @@ class Onboarding
      *
      * @param string $state done|running|pending|failed
      * @param string $detail
-     * @return array{state: string, detail: string}
+     * @param bool $hidden not part of this plan
+     * @return array{state: string, detail: string, hidden: bool}
      */
-    private function row(string $state, string $detail): array
+    private function row(string $state, string $detail, bool $hidden = false): array
     {
-        return ['state' => $state, 'detail' => $detail];
+        return ['state' => $state, 'detail' => $detail, 'hidden' => $hidden];
     }
 
     /**

@@ -12,8 +12,8 @@ namespace Quissly\Search\Model\Connect;
  *
  * The workspace name: letters, numbers, spaces and hyphens (the Shopify app's
  * SLUG_SOURCE_PATTERN), suggested from the store name the way its `suggestOrganizationName()`
- * does. The email: what Quissly's backend accepts (its pydantic `EmailStr`, mirrored by the
- * Shopify app's `email-validation.ts`), so a bad address is caught here rather than when the
+ * does. The email: what Quissly accepts for an account email (the Shopify app checks the
+ * same), so a bad address is caught here rather than when the
  * account is created. setup.js runs the same checks as the merchant types.
  *
  * Pure. quissly-for-woocommerce and quissly-for-cs-cart carry the same rules.

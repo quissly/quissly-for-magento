@@ -36,16 +36,32 @@ use Quissly\Search\Model\Config\Settings;
  *                     so every other key is carried over); saveLanguage() the same for one
  *                     language's list.
  * The QSearch service id is looked up once through ServiceDirectory and stored at website
- * scope (quissly/connection/search_service_id), like search_namespace.
+ * scope (quissly/connection/search_service_id), like search_namespace - by Configuration, and in
+ * the background (Cron/ShowcaseCron) so the storefront never waits for someone to open it.
+ *
+ * The suggestion buttons under the empty bar ("Search Suggestions") are kept the same way, in
+ * the Shopify app's keys: `search_chips_mode` (manual, else the generated ones) and
+ * `search_chips_manual` ({language: [...]}, the main language's included) - saveButtons(). A
+ * website whose choice is not in Quissly yet (kept in Magento before) still uses Magento's copy
+ * (buttonsForStorefront()) until its next save.
  */
 class SearchSuggestions
 {
     public const QUERIES_KEY = 'client_specific_queries';
     public const TYPING_KEY = 'search_typing_enabled';
+    /** What Quissly's generator last wrote, {main, by_language} (written by Quissly, read only here). */
+    public const GENERATED_KEY = 'client_specific_queries_generated';
+
+    /** The suggestion buttons: which ones, and the merchant's Manual lists by language. */
+    public const CHIPS_MODE_KEY = 'search_chips_mode';
+    public const MANUAL_CHIPS_KEY = 'search_chips_manual';
 
     /** At most this many suggestions, each at most MAX_LENGTH characters (as Shopify). */
     public const MAX_COUNT = 20;
     public const MAX_LENGTH = 80;
+
+    /** Suggestion buttons under the overlay's bar, at most (Shopify's MAX_CHIPS). */
+    public const MAX_CHIPS = 10;
 
     private const CACHE_PREFIX = 'quissly_search_suggestions_';
     private const CACHE_TTL = 300;
@@ -83,6 +99,28 @@ class SearchSuggestions
      * @return string[]
      */
     public function clean($raw): array
+    {
+        return $this->cleanList($raw);
+    }
+
+    /**
+     * The merchant's own suggestion buttons as typed in Configuration: one per line, cleaned.
+     *
+     * @param string $raw
+     * @return string[]
+     */
+    public function lines(string $raw): array
+    {
+        return $this->cleanList(preg_split('/\R/u', $raw) ?: []);
+    }
+
+    /**
+     * Trimmed, non-empty, de-duplicated (case-insensitive), in order.
+     *
+     * @param mixed $raw
+     * @return string[]
+     */
+    private function cleanList($raw): array
     {
         if (!is_array($raw)) {
             return [];
@@ -127,7 +165,8 @@ class SearchSuggestions
      * The suggestions a widget_config holds (null = no config row: on, none).
      *
      * @param mixed $config
-     * @return array{enabled:bool, queries:string[], language:string, by_language:array<string,string[]>}
+     * @return array{enabled:bool, queries:string[], language:string, by_language:array<string,string[]>,
+     *               generated:array{main:string[], by_language:array<string,string[]>}}
      */
     public function fromConfig($config): array
     {
@@ -140,12 +179,111 @@ class SearchSuggestions
             }
         }
         $primary = $config[SuggestionLanguage::PRIMARY_KEY] ?? '';
+        // What Quissly's generator last wrote (its merchant-edit baseline): "Reset to generated".
+        $generated = (array)($config[self::GENERATED_KEY] ?? []);
+        $generatedByLanguage = [];
+        foreach ((array)($generated['by_language'] ?? []) as $language => $queries) {
+            $queries = $this->clean($queries);
+            if (is_string($language) && $language !== '' && $queries !== []) {
+                $generatedByLanguage[strtolower($language)] = $queries;
+            }
+        }
+        $mode = $config[self::CHIPS_MODE_KEY] ?? '';
         return [
             'enabled' => !(array_key_exists(self::TYPING_KEY, $config) && $config[self::TYPING_KEY] === false),
             'queries' => $this->clean($config[self::QUERIES_KEY] ?? []),
             'language' => is_string($primary) ? strtolower(trim($primary)) : '',
             'by_language' => $byLanguage,
+            'generated' => ['main' => $this->clean($generated['main'] ?? []), 'by_language' => $generatedByLanguage],
+            // '' = not in Quissly yet (a website whose buttons were kept in Magento before).
+            'chips_mode' => in_array($mode, ['automatic', 'manual'], true) ? $mode : '',
+            'manual_chips' => $this->listsByLanguage($config[self::MANUAL_CHIPS_KEY] ?? []),
         ];
+    }
+
+    /**
+     * {language: list}, cleaned, keys lowercased, empty lists left out.
+     *
+     * @param mixed $raw
+     * @return array<string, string[]>
+     */
+    public function listsByLanguage($raw): array
+    {
+        $out = [];
+        foreach ((array)$raw as $language => $queries) {
+            $queries = $this->clean($queries);
+            if (is_string($language) && $language !== '' && $queries !== []) {
+                $out[strtolower($language)] = $queries;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * The Manual buttons for a shopper's language.
+     *
+     * That language's list, its base language's, else the main language's (the Shopify app's
+     * manualChipsForLocale()). At most MAX_CHIPS.
+     *
+     * @param array $manual {language: string[]}
+     * @param string $language
+     * @param string $primary the main language
+     * @return string[]
+     */
+    public function pickManual(array $manual, string $language, string $primary): array
+    {
+        $language = strtolower(str_replace('_', '-', trim($language)));
+        foreach ([$language, explode('-', $language)[0], strtolower($primary)] as $key) {
+            if ($key !== '' && !empty($manual[$key])) {
+                return array_slice(array_values($manual[$key]), 0, self::MAX_CHIPS);
+            }
+        }
+        return [];
+    }
+
+    /**
+     * The suggestion buttons for a shopper in $language.
+     *
+     * The Manual list or the generated one, as Quissly holds the choice; a website whose choice
+     * is not there yet uses Magento's copy.
+     *
+     * @param int|null $websiteId
+     * @param string $language the store view's language key
+     * @return string[]
+     */
+    public function buttonsForStorefront(?int $websiteId, string $language = ''): array
+    {
+        $lists = $this->storefrontLists($websiteId);
+        $primary = $lists['language'] !== '' ? $lists['language'] : $this->languages->websiteLanguage($websiteId);
+        $mode = $lists['chips_mode'];
+        $manual = $lists['manual_chips'];
+        if ($mode === '') {
+            $mode = $this->settings->overlaySuggestionsMode($websiteId) === 'manual' ? 'manual' : 'automatic';
+            $manual = $this->localManualLists($websiteId);
+        }
+        return $mode === 'manual'
+            ? $this->pickManual($manual, $language, $primary)
+            : $this->pickGenerated($lists['generated'], $language, $primary);
+    }
+
+    /**
+     * The Manual lists Magento keeps for the website (its copy): {language: list}.
+     *
+     * A value saved before the lists were per language is one list, one per line, in the main language.
+     *
+     * @param int|null $websiteId
+     * @return array<string, string[]>
+     */
+    public function localManualLists(?int $websiteId): array
+    {
+        $raw = $this->settings->overlayManualSuggestions($websiteId);
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) {
+            return $this->listsByLanguage($decoded);
+        }
+        $main = $this->languages->websiteLanguage($websiteId);
+        $lines = array_slice($this->lines($raw), 0, self::MAX_CHIPS);
+        return $lines === [] ? [] : [$main !== '' ? $main : 'en' => $lines];
     }
 
     /**
@@ -184,25 +322,84 @@ class SearchSuggestions
      */
     public function forStorefront(?int $websiteId, string $language = ''): array
     {
+        $lists = $this->storefrontLists($websiteId);
+        if (!$lists['enabled']) {
+            return [];
+        }
+        return $this->languages->pick($lists, $language, $this->languages->websiteLanguage($websiteId));
+    }
+
+    /**
+     * The overlay's Automatic suggestion buttons for a shopper in $language: only what
+     * Quissly's generator wrote (GENERATED_KEY), never the typing lists - the Shopify app's
+     * chipsForLocale(). That language's list first (then its base language's, then the main
+     * language's: the generator's own main list stays the old one when the merchant edited
+     * the typing list), else the generated main list; none before anything was generated.
+     *
+     * @param int|null $websiteId
+     * @param string $language the store view's language key
+     * @return string[]
+     */
+    public function generatedForStorefront(?int $websiteId, string $language = ''): array
+    {
+        $lists = $this->storefrontLists($websiteId);
+        $primary = $lists['language'] !== '' ? $lists['language'] : $this->languages->websiteLanguage($websiteId);
+        return $this->pickGenerated($lists['generated'], $language, $primary);
+    }
+
+    /**
+     * The generated list for a language (generatedForStorefront()), at most MAX_CHIPS.
+     *
+     * @param array $generated {main: string[], by_language: {language: string[]}}
+     * @param string $language
+     * @param string $primary the main list's language
+     * @return string[]
+     */
+    public function pickGenerated(array $generated, string $language, string $primary): array
+    {
+        $byLanguage = (array)($generated['by_language'] ?? []);
+        $language = strtolower(str_replace('_', '-', trim($language)));
+        foreach ([$language, explode('-', $language)[0], strtolower($primary)] as $key) {
+            if ($key !== '' && !empty($byLanguage[$key])) {
+                return array_slice(array_values($byLanguage[$key]), 0, self::MAX_CHIPS);
+            }
+        }
+        return array_slice(array_values((array)($generated['main'] ?? [])), 0, self::MAX_CHIPS);
+    }
+
+    /**
+     * Quissly's lists for the storefront, cached five minutes (a failed read, one): a
+     * shopper's page never waits on Quissly more than once in a while, and never on a
+     * console lookup (Configuration looks the service id up and stores it).
+     *
+     * @param int|null $websiteId
+     * @return array{enabled:bool, queries:string[], language:string, by_language:array<string,string[]>,
+     *               generated:array{main:string[], by_language:array<string,string[]>}}
+     */
+    private function storefrontLists(?int $websiteId): array
+    {
         $key = self::CACHE_PREFIX . (int)$websiteId;
         $cached = $this->cache->load($key);
         $lists = is_string($cached) && $cached !== '' ? json_decode($cached, true) : null;
-        if (!is_array($lists) || !isset($lists['queries'])) {
-            // The stored service id only: a shopper's page never waits on a console lookup
-            // (Configuration looks it up and stores it).
+        // An entry written before the generated or button lists were cached: read again.
+        if (!is_array($lists) || !isset($lists['queries'], $lists['generated'])
+            || !array_key_exists('manual_chips', $lists)
+        ) {
             $read = $this->read($websiteId, false);
-            $lists = $read !== null && $read['enabled']
-                ? $read
-                : ['queries' => [], 'language' => '', 'by_language' => []];
+            $lists = $read ?? $this->fromConfig([self::TYPING_KEY => false]);
             $ttl = $read === null ? self::FAILED_TTL : self::CACHE_TTL;
             $this->cache->save((string)json_encode($lists, JSON_UNESCAPED_UNICODE), $key, [], $ttl);
         }
-        $lists = $this->fromConfig([
+        $clean = $this->fromConfig([
             self::QUERIES_KEY => $lists['queries'] ?? [],
             SuggestionLanguage::PRIMARY_KEY => $lists['language'] ?? '',
             SuggestionLanguage::BY_LANGUAGE_KEY => $lists['by_language'] ?? [],
+            self::GENERATED_KEY => $lists['generated'] ?? [],
+            self::CHIPS_MODE_KEY => $lists['chips_mode'] ?? '',
+            self::MANUAL_CHIPS_KEY => $lists['manual_chips'] ?? [],
         ]);
-        return $this->languages->pick($lists, $language, $this->languages->websiteLanguage($websiteId));
+        $clean['enabled'] = !empty($lists['enabled']);
+        return $clean;
     }
 
     /**
@@ -255,6 +452,26 @@ class SearchSuggestions
             if (!isset($config[SuggestionLanguage::PRIMARY_KEY]) && $main !== '') {
                 $config[SuggestionLanguage::PRIMARY_KEY] = $main;
             }
+            return $config;
+        });
+    }
+
+    /**
+     * Write the suggestion buttons to Quissly (the Shopify app's saveSearchChips()).
+     *
+     * The choice and every language's Manual list, replaced whole; an empty list is left out, so
+     * that language uses the main one. Null when saved, else a merchant-facing reason.
+     *
+     * @param int|null $websiteId
+     * @param string $mode automatic | manual
+     * @param array $lists cleaned Manual lists by language key: {language: string[]}
+     * @return string|null
+     */
+    public function saveButtons(?int $websiteId, string $mode, array $lists): ?string
+    {
+        return $this->write($websiteId, static function (array $config) use ($mode, $lists): array {
+            $config[self::CHIPS_MODE_KEY] = $mode === 'manual' ? 'manual' : 'automatic';
+            $config[self::MANUAL_CHIPS_KEY] = (object)array_map('array_values', array_filter($lists));
             return $config;
         });
     }

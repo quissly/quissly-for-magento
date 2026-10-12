@@ -29,7 +29,12 @@ use Magento\Framework\Setup\UninstallInterface;
 class Uninstall implements UninstallInterface
 {
     /** Tables declared in etc/db_schema.xml. */
-    private const TABLES = ['quissly_sync_queue', 'quissly_product_state', 'quissly_stock_snapshot'];
+    private const TABLES = [
+        'quissly_sync_queue',
+        'quissly_product_state',
+        'quissly_stock_snapshot',
+        'quissly_event_queue',
+    ];
 
     /** Flag prefixes written by the sync, gate, health and capability models. */
     private const FLAG_PREFIXES = [

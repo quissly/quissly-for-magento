@@ -83,6 +83,13 @@ $view = $block->view();
                                     <?= $escaper->escapeHtml(__('Cancel subscription')) ?>
                                 </button>
                             <?php endif; ?>
+                            <?php if ($plan !== null && $plan['can_refund']): ?>
+                                <button type="button" class="q-button q-button--tertiary"
+                                        data-q-op="refund_preview"
+                                        data-id="<?= $escaper->escapeHtmlAttr($plan['id']) ?>">
+                                    <?= $escaper->escapeHtml(__('Request a refund')) ?>
+                                </button>
+                            <?php endif; ?>
                         </div>
 
                         <?php
@@ -129,6 +136,7 @@ $view = $block->view();
                                             class="q-plan<?= $card['popular'] ? ' is-popular' : '' ?>"
                                             data-q-pick="<?= $escaper->escapeHtmlAttr($card['id']) ?>"
                                             data-free="<?= $card['free'] ? '1' : '0' ?>"
+                                            <?= $changing ? '' : $block->topupAttributesHtml($card['topup']) ?>
                                             <?= $card['disabled'] ? 'aria-disabled="true"' : '' ?>>
                                         <?php if ($card['disabled']): ?>
                                             <span class="q-pill q-pill--warn q-plan__ribbon">
@@ -174,6 +182,38 @@ $view = $block->view();
                                     </button>
                                 <?php endforeach; ?>
                             </div>
+
+                            <?php if (!$changing): ?>
+                                <div class="q-autotopup" data-q-autotopup hidden>
+                                    <span class="q-autotopup__title">
+                                        <?= $escaper->escapeHtml(__('Automatic top-up on this plan')) ?>
+                                    </span>
+                                    <label class="q-check">
+                                        <input type="checkbox" data-q-at-toggle>
+                                        <span><?= $escaper->escapeHtml(__('Top up automatically')) ?></span>
+                                        <span class="q-text-quiet" data-q-at-rate></span>
+                                    </label>
+                                    <div class="q-field" data-q-at-fields hidden>
+                                        <span class="q-field__label">
+                                            <?= $escaper->escapeHtml(__('Max per month')) ?>
+                                        </span>
+                                        <span class="q-money">
+                                            <span class="q-money__prefix">$</span>
+                                            <input type="number" step="1" inputmode="decimal" data-q-at-max
+                                                   aria-label="<?= $escaper->escapeHtmlAttr(__('Max per month')) ?>">
+                                        </span>
+                                        <span class="q-field__hint" data-q-at-hint></span>
+                                    </div>
+                                    <p class="q-text-quiet">
+                                        <?= $escaper->escapeHtml(__(
+                                            'When this month\'s requests are about to run out, Quissly buys one '
+                                            . 'more block on your card. Off, requests stop at your plan\'s limit '
+                                            . 'until next month.'
+                                        )) ?>
+                                    </p>
+                                    <p class="q-field-error" data-q-at-error hidden></p>
+                                </div>
+                            <?php endif; ?>
 
                             <p class="q-text-quiet" data-q-same hidden>
                                 <?= $escaper->escapeHtml(__(
@@ -281,6 +321,53 @@ $view = $block->view();
                             static fn (array $e) => $e['plan']['can_topup']
                         );
                         ?>
+                        <?php
+                        $automatic = array_filter(
+                            $view['extras'],
+                            static fn (array $e) => $e['plan']['can_auto_topup']
+                                && isset($e['plan']['auto_topup']['min'])
+                        );
+                        ?>
+                        <?php foreach ($automatic as $extra): ?>
+                            <?php $auto = $extra['plan']['auto_topup']; ?>
+                            <div class="q-divider"></div>
+                            <div class="q-autotopup" data-q-at-form
+                                 data-id="<?= $escaper->escapeHtmlAttr($extra['plan']['id']) ?>">
+                                <span class="q-autotopup__title">
+                                    <?= $escaper->escapeHtml(count($automatic) > 1
+                                        ? __('%1: automatic top-up', $extra['label'])
+                                        : __('Automatic top-up')) ?>
+                                </span>
+                                <span class="q-text-quiet"><?= $escaper->escapeHtml($auto['label']) ?></span>
+                                <label class="q-check">
+                                    <input type="checkbox" data-q-at-toggle<?= $auto['on'] ? ' checked' : '' ?>>
+                                    <span><?= $escaper->escapeHtml(__('Top up automatically')) ?></span>
+                                    <span class="q-text-quiet"><?= $escaper->escapeHtml($auto['rate']) ?></span>
+                                </label>
+                                <div class="q-field" data-q-at-fields hidden>
+                                    <span class="q-field__label">
+                                        <?= $escaper->escapeHtml(__('Max per month')) ?>
+                                    </span>
+                                    <span class="q-money">
+                                        <span class="q-money__prefix">$</span>
+                                        <input type="number" step="1" inputmode="decimal" data-q-at-max
+                                               aria-label="<?= $escaper->escapeHtmlAttr(__('Max per month')) ?>"
+                                               min="<?= $escaper->escapeHtmlAttr($auto['min']) ?>"
+                                               max="<?= $escaper->escapeHtmlAttr($auto['max']) ?>"
+                                               data-min-text="<?= $escaper->escapeHtmlAttr($auto['min_text']) ?>"
+                                               data-max-text="<?= $escaper->escapeHtmlAttr($auto['max_text']) ?>"
+                                               value="<?= $escaper->escapeHtmlAttr($auto['default']) ?>">
+                                    </span>
+                                    <span class="q-field__hint"><?= $escaper->escapeHtml($auto['hint']) ?></span>
+                                </div>
+                                <p class="q-field-error" data-q-at-error hidden></p>
+                                <div>
+                                    <button type="button" class="q-button" data-q-at-save>
+                                        <?= $escaper->escapeHtml(__('Save automatic top-up')) ?>
+                                    </button>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
                         <?php if ($buyable !== []): ?>
                             <div class="q-divider"></div>
                             <div class="q-stack">
@@ -372,6 +459,18 @@ $view = $block->view();
                         </div>
                     <?php endif; ?>
                 </section>
+
+                <p class="q-links">
+                    <a href="<?= $escaper->escapeUrl($block::LINKS['refund']) ?>" target="_blank" rel="noopener">
+                        <?= $escaper->escapeHtml(__('Refund policy')) ?>
+                    </a>
+                    <a href="<?= $escaper->escapeUrl($block::LINKS['terms']) ?>" target="_blank" rel="noopener">
+                        <?= $escaper->escapeHtml(__('Terms of service')) ?>
+                    </a>
+                    <a href="<?= $escaper->escapeUrl($block::LINKS['privacy']) ?>" target="_blank" rel="noopener">
+                        <?= $escaper->escapeHtml(__('Privacy policy')) ?>
+                    </a>
+                </p>
             </div>
         </div>
     <?php endif; ?>
@@ -381,6 +480,13 @@ $view = $block->view();
             <h3 class="q-modal__title" id="q-modal-title" data-q-modal-title></h3>
             <div class="q-modal__body">
                 <p data-q-modal-body></p>
+                <div class="q-claim" data-q-modal-claim hidden>
+                    <label class="q-field__label" for="q-claim">
+                        <?= $escaper->escapeHtml(__('What happened?')) ?>
+                    </label>
+                    <textarea id="q-claim" data-q-claim data-min="10" maxlength="4000" rows="5"></textarea>
+                    <span class="q-claim__count" data-q-claim-count></span>
+                </div>
                 <div class="q-banner q-banner--critical" data-q-modal-error hidden></div>
             </div>
             <div class="q-modal__actions">

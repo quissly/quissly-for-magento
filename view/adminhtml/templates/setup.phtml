@@ -19,14 +19,17 @@ $steps = [
     'golive' => __('Go live'),
 ];
 $done = (int)array_search($step, array_keys($steps), true);
-// The Shopify app's provisioning rows, in its order.
+$locked = $block->isPlanLocked();
+$services = $block->services();
+$hasSearch = $services === [] || in_array('qsearch', $services, true);
+$hasChat = in_array('qchat', $services, true);
+// The Shopify app's account setup rows, in its order: store identity, organization and project
+// mean nothing to a merchant, so they are one "Quissly Account" row.
 $rows = [
-    'store' => __('Store identity'),
-    'organization' => __('Organization'),
-    'project' => __('Project'),
-    'qsearch' => __('QSearch service'),
-    'qchat' => __('QChat service'),
-    'catalog' => __('Catalog import'),
+    'account' => __('Quissly Account'),
+    'qsearch' => __('Smart AI Product Search'),
+    'qchat' => __('AI Shopping Assistant'),
+    'catalog' => __('Your Catalog'),
 ];
 ?>
 <div class="q-setup" data-q-setup data-config="<?= $escaper->escapeHtmlAttr($block->configJson()) ?>">
@@ -47,9 +50,7 @@ $rows = [
                     <?= $escaper->escapeHtml(__('Let\'s get Quissly running on your store')) ?>
                 </div>
                 <div class="q-band__sub">
-                    <?= $escaper->escapeHtml(
-                        __('Three short steps. Nothing reaches your storefront until you go live.')
-                    ) ?>
+                    <?= $escaper->escapeHtml(__('Three short steps, about five minutes.')) ?>
                 </div>
             </div>
             <div class="q-band__progress">
@@ -70,7 +71,9 @@ $rows = [
                     <li class="q-stepper__line" aria-hidden="true"></li>
                 <?php endif; ?>
                 <li class="q-stepper__item">
-                    <button type="button" data-q-goto="<?= $escaper->escapeHtmlAttr($key) ?>">
+                    <?php /* The plan is chosen once, on its own step: never a link back to it. */ ?>
+                    <button type="button" data-q-goto="<?= $escaper->escapeHtmlAttr($key) ?>"
+                        <?= $locked && $key === 'plan' ? 'disabled' : '' ?>>
                         <span class="q-stepper__dot"><?= $index < $done ? '&#10003;' : $index + 1 ?></span>
                         <span><?= $escaper->escapeHtml($label) ?></span>
                     </button>
@@ -86,11 +89,12 @@ $rows = [
             <div class="q-grid">
                 <div class="q-card">
                     <div class="q-kicker"><?= $escaper->escapeHtml(__('Step %1 of %2', 1, 3)) ?></div>
-                    <h2><?= $escaper->escapeHtml(__('Your details')) ?></h2>
+                    <h2><?= $escaper->escapeHtml(__('Tell us about your store')) ?></h2>
                     <p class="q-desc">
-                        <?= $escaper->escapeHtml(
-                            __('We use this email for your Quissly account and billing notifications.')
-                        ) ?>
+                        <?= $escaper->escapeHtml(__(
+                            'We filled this in from your store. Check it\'s right and fix anything that isn\'t - '
+                            . 'Quissly uses it to understand your products.'
+                        )) ?>
                     </p>
                     <?php if ($connected): ?>
                         <div class="q-field">
@@ -98,111 +102,94 @@ $rows = [
                             <input id="q-email" type="email" readonly
                                    value="<?= $escaper->escapeHtmlAttr($block->accountEmail()) ?>">
                             <p class="q-help">
-                                <?= $escaper->escapeHtml(__('Your store is connected to this Quissly account.')) ?>
+                                <?= $escaper->escapeHtml(__(
+                                    'Your Quissly account uses this address. To change it, contact Quissly support.'
+                                )) ?>
                             </p>
                         </div>
                     <?php else: ?>
                         <div class="q-field">
-                            <label for="q-email"><?= $escaper->escapeHtml(__('Email')) ?></label>
+                            <label for="q-email"><?= $escaper->escapeHtml(__('Email for account updates')) ?></label>
                             <input id="q-email" name="email" type="email" required autocomplete="email"
+                                   placeholder="merchant@example.com"
                                    value="<?= $escaper->escapeHtmlAttr($block->adminEmail()) ?>">
                             <p class="q-help">
-                                <?= $escaper->escapeHtml(
-                                    __('Account and billing emails go here. This can\'t be changed later.')
-                                ) ?>
+                                <?= $escaper->escapeHtml(__(
+                                    'We send account and billing emails here. It can\'t be changed once your '
+                                    . 'account is created.'
+                                )) ?>
                             </p>
                             <p class="q-help q-help--error" data-q-field-error="email" hidden></p>
                         </div>
                         <div class="q-field">
                             <label for="q-store-name"><?= $escaper->escapeHtml(__('Store name')) ?></label>
-                            <input id="q-store-name" name="store_name" type="text" maxlength="100"
+                            <input id="q-store-name" name="store_name" type="text" required maxlength="60"
                                    value="<?= $escaper->escapeHtmlAttr($block->storeName()) ?>"
-                                   placeholder="<?= $escaper->escapeHtmlAttr($block->domain()) ?>">
+                                   placeholder="<?= $escaper->escapeHtmlAttr(__('Acme Outdoors')) ?>">
                             <p class="q-help">
-                                <?= $escaper->escapeHtml(__(
-                                    'Letters, numbers, spaces and hyphens. Your Quissly workspace is named '
-                                    . 'after it; left empty, it is named after %1.',
-                                    $block->domain()
-                                )) ?>
+                                <?= $escaper->escapeHtml(__('Letters, numbers, spaces and hyphens.')) ?>
                             </p>
                             <p class="q-help q-help--error" data-q-field-error="store_name" hidden></p>
                         </div>
                         <div class="q-field">
-                            <label for="q-description">
-                                <?= $escaper->escapeHtml(__('Description')) ?>
-                                <span class="q-optional"><?= $escaper->escapeHtml(__('(optional)')) ?></span>
-                            </label>
-                            <textarea id="q-description" name="description" rows="3" maxlength="500"><?=
-                                $escaper->escapeHtml($block->description())
-                            ?></textarea>
+                            <label for="q-description"><?= $escaper->escapeHtml(__('What do you sell?')) ?></label>
+                            <?php $sellPlaceholder = __('e.g. Outdoor gear and camping equipment'); ?>
+                            <textarea id="q-description" name="description" rows="4" required maxlength="500"
+                                      placeholder="<?= $escaper->escapeHtmlAttr($sellPlaceholder) ?>"><?=
+                                          $escaper->escapeHtml($block->description())
+                                        ?></textarea>
                             <p class="q-help">
-                                <?= $escaper->escapeHtml(__(
-                                    'Drafted from your store. A short note on what you sell, so Quissly and your '
-                                    . 'team recognise this workspace.'
-                                )) ?>
+                                <?= $escaper->escapeHtml($block->description() !== ''
+                                    ? __('Drafted from your store\'s products. Edit anything that isn\'t right.')
+                                    : __('One or two sentences about what you sell and who it\'s for.')) ?>
                             </p>
                         </div>
                     <?php endif; ?>
                     <div class="q-notice q-notice--error" data-q-error hidden></div>
                 </div>
-                <?php if (!$connected): ?>
-                <aside class="q-card q-card--side">
-                    <div class="q-kicker"><?= $escaper->escapeHtml(__('Preview')) ?></div>
-                    <div class="q-preview">
-                        <div class="q-preview__kicker"><?= $escaper->escapeHtml(__('Workspace')) ?></div>
-                        <div class="q-preview__name" data-q-preview="store_name"
-                             data-fallback="<?= $escaper->escapeHtmlAttr($block->domain()) ?>">
-                            <?= $escaper->escapeHtml($block->storeName() ?: $block->domain()) ?>
-                        </div>
-                        <p class="q-preview__desc" data-q-preview="description"
-                           data-fallback="<?= $escaper->escapeHtmlAttr(__('No description yet.')) ?>">
-                            <?= $escaper->escapeHtml($block->description() ?: __('No description yet.')) ?>
-                        </p>
-                    </div>
-                    <p class="q-side-foot">
-                        <?= $escaper->escapeHtml(__('Nothing is charged and nothing is published until you say so.')) ?>
-                    </p>
-                </aside>
-                <?php else: ?>
+                <?php /* "What happens next": the whole setup at a glance (the Shopify app's SetupJourney). */ ?>
                 <aside class="q-card q-card--side">
                     <div class="q-kicker"><?= $escaper->escapeHtml(__('What happens next')) ?></div>
-                    <ul class="q-next">
-                        <li>
+                    <ol class="q-journey">
+                        <li class="q-journey__item is-current">
+                            <strong><?= $escaper->escapeHtml(__('Tell us about your store')) ?></strong>
+                            <span><?= $escaper->escapeHtml(__('You\'re here. It takes a minute.')) ?></span>
+                        </li>
+                        <li class="q-journey__item">
                             <strong><?= $escaper->escapeHtml(__('Pick a plan')) ?></strong>
-                            <span><?= $escaper->escapeHtml(__('Start free, or try a paid plan for 14 days.')) ?></span>
+                            <span><?= $escaper->escapeHtml(
+                                __('Start free, or pick a paid plan and pay on a secure checkout page.')
+                            ) ?></span>
                         </li>
-                        <li>
-                            <strong><?= $escaper->escapeHtml(__('Your catalog syncs')) ?></strong>
-                            <span>
-                                <?= $escaper->escapeHtml(__('Your products are sent to Quissly in the background.')) ?>
-                            </span>
+                        <li class="q-journey__item">
+                            <strong><?= $escaper->escapeHtml(__('Turn Quissly on')) ?></strong>
+                            <span><?= $escaper->escapeHtml(
+                                __('We set everything up and import your products. Then you switch Quissly on.')
+                            ) ?></span>
                         </li>
-                        <li>
-                            <strong><?= $escaper->escapeHtml(__('Go live')) ?></strong>
-                            <span>
-                                <?= $escaper->escapeHtml(__('Switch Quissly search on once your catalog is ready.')) ?>
-                            </span>
-                        </li>
-                    </ul>
+                    </ol>
                     <p class="q-side-foot">
-                        <?= $escaper->escapeHtml(__('Nothing is charged and nothing is published until you say so.')) ?>
+                        <?= $escaper->escapeHtml(__(
+                            'Nothing is charged until you pick a paid plan, and your store doesn\'t change '
+                            . 'until you turn Quissly on.'
+                        )) ?>
                     </p>
                 </aside>
-                <?php endif; ?>
             </div>
             <div class="q-actionbar">
-                <span class="q-actionbar__note">
-                    <?= $escaper->escapeHtml($connected
-                        ? __('Connected to Quissly.')
-                        : __('One click creates your Quissly account and connects this store.')) ?>
+                <?php /* Why Save is disabled, beside it: the first problem only (web/js/setup.js). */ ?>
+                <span class="q-actionbar__note" data-q-details-note>
+                    <?= $escaper->escapeHtml(
+                        $connected ? __('Connected to Quissly.') : __('Nothing is charged yet.')
+                    ) ?>
                 </span>
                 <?php if ($connected): ?>
-                    <button type="button" class="q-btn" data-q-forward="plan">
+                    <button type="button" class="q-btn" data-q-forward="<?= $locked ? 'golive' : 'plan' ?>">
                         <?= $escaper->escapeHtml(__('Continue')) ?>
                     </button>
                 <?php else: ?>
                     <button type="submit" class="q-btn" data-q-connect-submit>
-                        <?= $escaper->escapeHtml(__('Connect & continue')) ?>
+                        <?= $escaper->escapeHtml(__('Save & continue')) ?>
                     </button>
                 <?php endif; ?>
             </div>
@@ -217,18 +204,33 @@ $rows = [
                 <div>
                     <div class="q-kicker"><?= $escaper->escapeHtml(__('Step %1 of %2', 2, 3)) ?></div>
                     <h2><?= $escaper->escapeHtml(__('Choose a plan')) ?></h2>
+                    <p class="q-plan-head__desc">
+                        <?= $escaper->escapeHtml(__('Change or cancel anytime in Billing.')) ?>
+                    </p>
                 </div>
                 <?php if ($plans !== null && $plans['current'] === null): ?>
-                    <div class="q-cadence" role="radiogroup"
-                         aria-label="<?= $escaper->escapeHtmlAttr(__('Billing')) ?>">
-                        <button type="button" role="radio" data-q-cadence="monthly" aria-checked="true">
-                            <strong><?= $escaper->escapeHtml(__('Monthly')) ?></strong>
-                            <small><?= $escaper->escapeHtml(__('Pay as you go')) ?></small>
-                        </button>
-                        <button type="button" role="radio" data-q-cadence="annual" aria-checked="false">
-                            <strong><?= $escaper->escapeHtml(__('Annual')) ?></strong>
-                            <small data-q-saving></small>
-                        </button>
+                    <div class="q-plan-head__controls">
+                        <div class="q-cadence" role="radiogroup"
+                             aria-label="<?= $escaper->escapeHtmlAttr(__('Billing')) ?>">
+                            <button type="button" role="radio" data-q-cadence="monthly" aria-checked="true">
+                                <strong><?= $escaper->escapeHtml(__('Monthly')) ?></strong>
+                                <small><?= $escaper->escapeHtml(__('Pay as you go')) ?></small>
+                            </button>
+                            <button type="button" role="radio" data-q-cadence="annual" aria-checked="false">
+                                <strong><?= $escaper->escapeHtml(__('Annual')) ?></strong>
+                                <small data-q-saving></small>
+                            </button>
+                        </div>
+                        <?php /* How a paid plan is paid: an invoice (the default, no payment page) or a card. */ ?>
+                        <div class="q-pay-method">
+                            <label for="q-pay-method"><?= $escaper->escapeHtml(__('Payment')) ?></label>
+                            <select id="q-pay-method" class="admin__control-select" data-q-pay-method>
+                                <option value="invoice" selected>
+                                    <?= $escaper->escapeHtml(__('Manual invoice')) ?>
+                                </option>
+                                <option value="card"><?= $escaper->escapeHtml(__('Credit card')) ?></option>
+                            </select>
+                        </div>
                     </div>
                 <?php endif; ?>
             </div>
@@ -255,12 +257,16 @@ $rows = [
                         ) ?>
                     </div>
                 <?php endif; ?>
-                <div class="q-tabs" role="tablist">
+                <?php /* Each option says what it adds, so nobody has to know what QSearch or QChat is. */ ?>
+                <p class="q-listhead" id="q-want"><?= $escaper->escapeHtml(__('What do you want on your store?')) ?></p>
+                <div class="q-tabs q-tabs--choices" role="tablist" aria-labelledby="q-want">
                     <button type="button" role="tab" data-q-tab="qsearch" aria-selected="true">
-                        <?= $escaper->escapeHtml(__('Search')) ?>
+                        <strong><?= $escaper->escapeHtml(__('Search')) ?></strong>
+                        <small><?= $escaper->escapeHtml(__('A smarter search bar')) ?></small>
                     </button>
                     <button type="button" role="tab" data-q-tab="qchat" aria-selected="false">
-                        <?= $escaper->escapeHtml(__('Chat')) ?>
+                        <strong><?= $escaper->escapeHtml(__('Chat')) ?></strong>
+                        <small><?= $escaper->escapeHtml(__('An AI shopping assistant')) ?></small>
                     </button>
                 </div>
                 <div data-q-plan-picker>
@@ -346,8 +352,8 @@ $rows = [
                                     <tbody>
                                         <?php foreach ([
                                             (string)($family === 'qchat'
-                                                ? __('AI messages / month')
-                                                : __('Searches / month'))
+                                                ? __('AI chat messages a month')
+                                                : __('Searches a month'))
                                                 => static fn (array $c) => $c['figures'][0][0],
                                             (string)__('Extra requests')
                                                 => static fn (array $c) => $c['figures'][1][0],
@@ -373,6 +379,11 @@ $rows = [
                     <button type="button" class="q-btn q-btn--quiet q-btn--small" data-q-compare>
                         <?= $escaper->escapeHtml(__('Compare all features')) ?>
                     </button>
+                    <span class="q-compare-row__note">
+                        <?= $escaper->escapeHtml(
+                            __('Not sure? Growth is our most popular plan, and you can change anytime.')
+                        ) ?>
+                    </span>
                 </div>
                 <div class="q-notice" data-q-pay hidden>
                     <?= $escaper->escapeHtml(__(
@@ -415,13 +426,15 @@ $rows = [
             <div class="q-card q-card--golive">
                 <div class="q-kicker"><?= $escaper->escapeHtml(__('Step %1 of %2', 3, 3)) ?></div>
                 <h2><?= $escaper->escapeHtml(__('Go live')) ?></h2>
-                <p class="q-desc">
+                <?php /* What is left for the merchant, in one sentence (web/js/setup.js follows the status). */ ?>
+                <p class="q-desc" data-q-intro>
                     <?= $escaper->escapeHtml(__(
-                        'Your catalog is on its way to Quissly. Once it is ready, Finish Setup switches '
-                        . 'Quissly search on for your shoppers - or save now and switch it on later.'
+                        'We\'re setting up your account - usually about a minute. '
+                        . 'Then your products are sent to Quissly.'
                     )) ?>
                 </p>
                 <ul class="q-golive-list">
+                    <?php if ($hasSearch): ?>
                     <li>
                         <span class="q-disc" aria-hidden="true"></span>
                         <div>
@@ -442,6 +455,18 @@ $rows = [
                             </span>
                         </div>
                     </li>
+                    <?php endif; ?>
+                    <?php if ($hasChat): ?>
+                    <li>
+                        <span class="q-disc" aria-hidden="true"></span>
+                        <div>
+                            <?= $escaper->escapeHtml(__('Your AI shopping assistant joins your store')) ?>
+                            <span>
+                                <?= $escaper->escapeHtml(__('It finds your products through Quissly search.')) ?>
+                            </span>
+                        </div>
+                    </li>
+                    <?php endif; ?>
                     <li>
                         <span class="q-disc" aria-hidden="true"></span>
                         <div>
@@ -457,48 +482,51 @@ $rows = [
             <div class="q-card q-card--warm">
                 <div class="q-status-head">
                     <div class="q-kicker q-kicker--quiet">
-                        <?= $escaper->escapeHtml(__('Quissly account setup')) ?>
+                        <?= $escaper->escapeHtml(__('Account setup')) ?>
                     </div>
                     <span class="q-chip" data-q-chip><?= $escaper->escapeHtml(__('Setting up...')) ?></span>
                 </div>
-                <p class="q-status-body">
-                    <?= $escaper->escapeHtml(__(
-                        'Running in the background. Finish Setup unlocks when it is done - you can keep '
-                        . 'working on the left.'
-                    )) ?>
+                <p class="q-status-body" data-q-status-body>
+                    <?= $escaper->escapeHtml(
+                        __('We do this part for you - nothing to click. This page updates by itself.')
+                    ) ?>
                 </p>
+                <?php /* The raw problem is for support, not the merchant's main message. */ ?>
+                <details class="q-details" data-q-technical hidden>
+                    <summary><?= $escaper->escapeHtml(__('Technical details')) ?></summary>
+                    <p data-q-technical-text></p>
+                </details>
                 <ol class="q-rows">
                     <?php foreach ($rows as $key => $label): ?>
-                        <li class="q-row" data-q-row="<?= $escaper->escapeHtmlAttr($key) ?>" data-state="pending">
+                        <li class="q-row" data-q-row="<?= $escaper->escapeHtmlAttr($key) ?>" data-state="pending"
+                            <?= $key === 'qchat' && !$hasChat && $services !== [] ? 'hidden' : '' ?>>
                             <span class="q-disc" aria-hidden="true"></span>
                             <span class="q-row__label"><?= $escaper->escapeHtml($label) ?>
                                 <small data-q-row-detail hidden></small></span>
                             <span class="q-row__state" data-q-row-state>
-                                <?= $escaper->escapeHtml(__('Waiting')) ?>
+                                <?= $escaper->escapeHtml(__('Pending')) ?>
                             </span>
                         </li>
                     <?php endforeach; ?>
                 </ol>
                 <p class="q-status-foot">
                     <button type="button" class="q-btn q-btn--quiet q-btn--small" data-q-retry hidden>
-                        <?= $escaper->escapeHtml(__('Start the sync again')) ?>
+                        <?= $escaper->escapeHtml(__('Start the import again')) ?>
                     </button>
-                    <?= $escaper->escapeHtml(
-                        __('Usually a few minutes. This page updates itself - no refresh needed.')
-                    ) ?>
+                    <span data-q-status-foot>
+                        <?= $escaper->escapeHtml(__('This page updates itself - no refresh needed.')) ?>
+                    </span>
                 </p>
             </div>
         </div>
         <div class="q-actionbar">
-            <button type="button" class="q-btn q-btn--quiet" data-q-back="plan">
-                <?= $escaper->escapeHtml(__('Back')) ?>
-            </button>
-            <span class="q-actionbar__note">
-                <?= $escaper->escapeHtml(__('Finish Setup unlocks when background setup completes.')) ?>
+            <?php /* No Back: the plan is chosen by now and is changed in Billing once setup is finished. */ ?>
+            <span class="q-actionbar__note" data-q-golive-note>
+                <?= $escaper->escapeHtml(__('Finish unlocks when account setup completes.')) ?>
             </span>
-            <?php /* The Shopify app's "Save changes": done for now, search switched on later. */ ?>
+            <?php /* The Shopify app's "Do this later": done for now, Quissly switched on later. */ ?>
             <button type="button" class="q-btn q-btn--quiet" data-q-save hidden disabled>
-                <?= $escaper->escapeHtml(__('Save changes')) ?>
+                <?= $escaper->escapeHtml(__('Do this later')) ?>
             </button>
             <button type="button" class="q-btn" data-q-finish disabled>
                 <?= $escaper->escapeHtml(__('Finish Setup')) ?>

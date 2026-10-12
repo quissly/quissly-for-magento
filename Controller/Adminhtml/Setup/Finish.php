@@ -14,10 +14,10 @@ use Magento\Framework\Controller\Result\JsonFactory;
 use Quissly\Search\Model\Connect\Onboarding;
 
 /**
- * Finish Setup: Quissly search switches on, Setup is done, the Dashboard takes over.
+ * Finish Setup: what the plan includes switches on, Setup is done, the Dashboard takes over.
  *
- * With later=1 it is the Shopify app's "Save changes": Setup is done but search stays off,
- * for a merchant who is not ready to switch it on (or whose first sync needs another look).
+ * With later=1 it is the Shopify app's "Do this later": Setup is done but nothing is switched
+ * on, for a merchant who is not ready yet (or whose first sync needs another look).
  */
 class Finish extends Action implements HttpPostActionInterface
 {
@@ -52,7 +52,7 @@ class Finish extends Action implements HttpPostActionInterface
                 ]);
             }
             $this->messageManager->addSuccessMessage(__(
-                'Setup saved. Quissly search stays off until you switch it on in Configuration, '
+                'Setup saved. Quissly stays off until you switch it on in Configuration, '
                 . 'once your catalog has synced.'
             ));
             return $result->setData(['ok' => true, 'redirect' => $this->getUrl('quissly/dashboard/index')]);
@@ -65,7 +65,11 @@ class Finish extends Action implements HttpPostActionInterface
                 ),
             ]);
         }
-        $this->messageManager->addSuccessMessage(__('Quissly search is live on your store.'));
+        $this->messageManager->addSuccessMessage(
+            in_array('qsearch', $this->onboarding->services(), true) || $this->onboarding->services() === []
+                ? __('Quissly search is live on your store.')
+                : __('Your AI shopping assistant is live on your store.')
+        );
         return $result->setData(['ok' => true, 'redirect' => $this->getUrl('quissly/dashboard/index')]);
     }
 }

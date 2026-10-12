@@ -51,10 +51,19 @@ installation is required - Magento has no zip-upload module install).
   previous version in `var/quissly/update/backup` until the next one.
 - Configuration entries under the `quissly/*` path (credentials stored encrypted by
   Magento's own encryption).
-- Three small database tables for the sync queue, sync state and the stock snapshot.
+- Four small database tables for the sync queue, sync state, the stock snapshot and the
+  shopping events waiting to be sent.
 - Footer script tags for the storefront features that are switched on - the search overlay
   once AI Search is live, and Quick, voice, image and QChat when you enable them. Nothing
   is emitted for a feature that is off.
+- **Shopping activity for Quissly's analytics** (Stores → Configuration → Quissly → Features →
+  *Shopping activity for Quissly analytics*, on by default): product page views, searches,
+  adds to cart and to the wishlist, and paid orders (an online payment when its first invoice
+  is paid, an offline one when the order is placed) go to Quissly for the Quissly Admin
+  Panel's analytics - the Quissly Shopify app sends the same. Product ids, quantities, prices
+  and order totals with the visitor id above - never a name, email, address or IP. Nothing is
+  recorded for a guest who has not accepted your cookie notice. A product or search results
+  page carries one hidden element and a small script for it; the cron sends the events.
 - One first-party cookie, `quissly_uid` (a random id, one year, HttpOnly), set on a guest's
   first search so Quissly's analytics count a returning visitor once. It is not set while
   your cookie notice (*Cookie Restriction Mode*) has not been accepted - see Security notes.
@@ -258,6 +267,7 @@ you have used this month, and lets you change plan, buy extra requests, cancel (
 the paid period) or keep a cancelled plan, undo a scheduled downgrade and update your card.
 Every charge is shown before you confirm it. Your invoices are listed with their PDFs.
 Payments go through Paddle on Quissly's pages; your card is never entered in Magento.
+Automatic top-up can be switched on when you start a plan or later under Extra requests: when the month's requests are about to run out, Quissly buys one more block on your card, up to the monthly maximum you set. **Request a refund** on a paid plan says straight away whether the refund is automatic; if it is not, you can describe what happened and a person replies within 3 business days.
 
 **Quissly → Quissly Admin Panel** opens Quissly's own console inside your Magento admin,
 already signed in as the account Connect created - your catalogue as Quissly sees it, chat

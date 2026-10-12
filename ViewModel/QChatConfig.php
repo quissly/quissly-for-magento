@@ -15,7 +15,7 @@ use Quissly\Search\Model\Config\Settings;
  *
  * The widget renders only when BOTH hold for the current store's website:
  * the qchat toggle is on (default OFF) and an agent id is configured. The
- * agent id is the chat middleware's public Service id - safe in markup by
+ * agent id is the chat service's public id - safe in markup by
  * design; credentials never appear here.
  *
  * Output is identical for every shopper of a store (config-derived only),

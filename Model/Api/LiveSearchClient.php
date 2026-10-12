@@ -13,7 +13,7 @@ use Quissly\Search\Model\Config\Settings;
 /**
  * Live qsearch client for the interception path.
  *
- * Contract, live-confirmed against the deployed API:
+ * Contract, as Quissly's API answers it:
  * modelled fields only (extra="forbid"); strict 2 s budget via HttpClient; ids
  * validated per the ID-boundary rule. A storefront search passes who is searching
  * (Model/Search/Shopper: user_id, device, os - its results page is then not cached,

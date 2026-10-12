@@ -101,7 +101,7 @@
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
                     <comment><![CDATA[When on, clicking the storefront search box opens a full-width search bar at the top of a blurred page, with Quick's suggestions under it when Quick is on. Purely a presentation change - results are unaffected. Leave off to keep your theme's native search box behaviour. <strong>If your theme has no search box at all</strong>, Quissly adds a search button whatever this is set to, since it is then the only way to search; see the mount point below to say where it goes.]]></comment>
                 </field>
-                <field id="overlay_mount_selector" translate="label comment" type="text" sortOrder="16"
+                <field id="overlay_mount_selector" translate="label comment" type="text" sortOrder="19"
                        showInDefault="1" showInWebsite="1" showInStore="0" canRestore="1">
                     <backend_model>Quissly\Search\Model\Config\Backend\StorefrontSetting</backend_model>
                     <label>Search button mount point</label>
@@ -157,6 +157,13 @@
                          bubble then appears on every page in its default language and colors. -->
                     <comment><![CDATA[<strong>Before switching this on, set up your chat in the Quissly Admin Panel (Quissly &gt; Quissly Admin Panel in the menu): languages, colors, greeting and how the widget looks.</strong> The chat bubble appears on every storefront page the moment this is saved, exactly as configured there - so configure it first, then turn it on.]]></comment>
                 </field>
+                <field id="enable_events" translate="label comment" type="select" sortOrder="70"
+                       showInDefault="1" showInWebsite="1" showInStore="0" canRestore="1">
+                    <backend_model>Quissly\Search\Model\Config\Backend\StorefrontSetting</backend_model>
+                    <label>Shopping activity for Quissly analytics</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Sends product page views, searches, adds to cart and to the wishlist, and paid orders to Quissly, for the analytics in the Quissly Admin Panel. Products and order totals only - never a customer's name, email, address or IP. A guest who has not accepted your cookie notice is not tracked. On by default.</comment>
+                </field>
                 <field id="qchat_agent_id" translate="label comment" type="text" sortOrder="60"
                        showInDefault="0" showInWebsite="0" showInStore="0">
                     <backend_model>Quissly\Search\Model\Config\Backend\StorefrontSetting</backend_model>
@@ -164,12 +171,12 @@
                     <comment>The public QChat agent identifier - not your API token.</comment>
                 </field>
             </group>
-            <!-- Search bar suggestions (the Shopify app's): kept in QUISSLY, not here - the
-                 fields show what Quissly holds for the website (SearchSuggestionsField) and
-                 the list field's backend writes a changed list back (SearchSuggestions). -->
+            <!-- Search Examples (the Shopify app's name for the typing list): kept in QUISSLY, not
+                 here - the fields show what Quissly holds for the website (SearchSuggestionsField)
+                 and the list field's backend writes a changed list back (SearchSuggestions). -->
             <group id="search_suggestions" translate="label comment" type="text" sortOrder="25"
                    showInDefault="1" showInWebsite="1" showInStore="0">
-                <label>Search bar suggestions</label>
+                <label>Search Examples</label>
                 <attribute type="expanded">1</attribute>
                 <comment>Example searches the search overlay types, letter by letter, into its empty search bar, in random order, so shoppers see what they can ask. They stop the moment a shopper starts typing.</comment>
                 <field id="typing_enabled" translate="label" type="select" sortOrder="10"
@@ -178,14 +185,79 @@
                     <label>Show typing suggestions</label>
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
                 </field>
-                <!-- One list per store language, edited as pills with a Language select
-                     (SearchSuggestionsField + web/js/config-suggestions.js). -->
+                <!-- One list per store language, a row per example with Remove and a Language select
+                     (SearchSuggestionsField + web/js/config-suggestions.js), as the Shopify app. -->
                 <field id="suggestions" translate="label comment" type="textarea" sortOrder="20"
                        showInDefault="1" showInWebsite="1" showInStore="0">
                     <backend_model>Quissly\Search\Model\Config\Backend\SearchSuggestions</backend_model>
                     <frontend_model>Quissly\Search\Block\Adminhtml\Config\SearchSuggestionsField</frontend_model>
+                    <label>Examples</label>
+                    <comment>Each under 80 characters.</comment>
+                </field>
+            </group>
+            <!-- Search Suggestions (the Shopify app's): the buttons under the overlay's empty bar.
+                 The choice and the Manual lists are kept in Quissly in the Shopify app's keys
+                 (ButtonsField shows them, ManualButtons writes them); Magento keeps a copy. The
+                 fields keep their old paths, so a store's earlier values carry over. -->
+            <group id="suggestion_buttons" translate="label comment" type="text" sortOrder="26"
+                   showInDefault="1" showInWebsite="1" showInStore="0">
+                <label>Search Suggestions</label>
+                <attribute type="expanded">1</attribute>
+                <comment>Buttons shown when search opens, under the empty search bar. A click searches for it.</comment>
+                <field id="overlay_suggestions" translate="label comment" type="select" sortOrder="10"
+                       showInDefault="1" showInWebsite="1" showInStore="0" canRestore="1">
+                    <config_path>quissly/features/overlay_suggestions</config_path>
+                    <backend_model>Quissly\Search\Model\Config\Backend\StorefrontSetting</backend_model>
+                    <label>Show suggestion buttons</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>On by default.</comment>
+                </field>
+                <field id="overlay_suggestions_mode" translate="label" type="select" sortOrder="20"
+                       showInDefault="1" showInWebsite="1" showInStore="0">
+                    <config_path>quissly/features/overlay_suggestions_mode</config_path>
+                    <backend_model>Quissly\Search\Model\Config\Backend\StorefrontSetting</backend_model>
+                    <frontend_model>Quissly\Search\Block\Adminhtml\Config\ButtonsField</frontend_model>
                     <label>Suggestions</label>
-                    <comment>Each under 80 characters. Click × to remove one.</comment>
+                    <source_model>Quissly\Search\Model\Config\Source\SuggestionsMode</source_model>
+                </field>
+                <field id="overlay_suggestions_manual" translate="label comment" type="textarea" sortOrder="30"
+                       showInDefault="1" showInWebsite="1" showInStore="0">
+                    <config_path>quissly/features/overlay_suggestions_manual</config_path>
+                    <backend_model>Quissly\Search\Model\Config\Backend\ManualButtons</backend_model>
+                    <frontend_model>Quissly\Search\Block\Adminhtml\Config\ButtonsField</frontend_model>
+                    <label>Your suggestions</label>
+                    <comment>Fill one and the next field appears. Up to 10.</comment>
+                    <depends>
+                        <field id="overlay_suggestions_mode">manual</field>
+                    </depends>
+                </field>
+            </group>
+            <!-- Most loved products (the Shopify app's): the merchant's picks, by SKU, shown in the
+                 overlay under the suggestion buttons (Model/Search/MostLoved). -->
+            <group id="most_loved" translate="label comment" type="text" sortOrder="27"
+                   showInDefault="1" showInWebsite="1" showInStore="0">
+                <label>Most Loved Products</label>
+                <comment>Products you pick, shown under the search suggestions when search opens. Pick 8 to show and 4 other products as backups: when a shown product is out of stock, the first available backup takes its place. Shoppers see nothing until all 12 are picked and 8 of them are in stock.</comment>
+                <field id="enabled" translate="label comment" type="select" sortOrder="10"
+                       showInDefault="1" showInWebsite="1" showInStore="0" canRestore="1">
+                    <backend_model>Quissly\Search\Model\Config\Backend\StorefrontSetting</backend_model>
+                    <label>Most loved products</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Off by default.</comment>
+                </field>
+                <field id="shown" translate="label comment" type="textarea" sortOrder="20"
+                       showInDefault="1" showInWebsite="1" showInStore="0">
+                    <backend_model>Quissly\Search\Model\Config\Backend\MostLovedSkus</backend_model>
+                    <frontend_model>Quissly\Search\Block\Adminhtml\Config\MostLovedField</frontend_model>
+                    <label>Shown products (8)</label>
+                    <comment>SKUs, one per line. Pick exactly 8. Shoppers see them in this order.</comment>
+                </field>
+                <field id="backups" translate="label comment" type="textarea" sortOrder="30"
+                       showInDefault="1" showInWebsite="1" showInStore="0">
+                    <backend_model>Quissly\Search\Model\Config\Backend\MostLovedSkus</backend_model>
+                    <frontend_model>Quissly\Search\Block\Adminhtml\Config\MostLovedField</frontend_model>
+                    <label>Backup products (4)</label>
+                    <comment>SKUs, one per line. Pick exactly 4, none of them already in Shown products. When a shown product is out of stock, the first available backup takes its place.</comment>
                 </field>
             </group>
             <group id="catalog" translate="label" type="text" sortOrder="30"
@@ -201,6 +273,18 @@
                     <source_model>Quissly\Search\Model\Config\Source\CatalogAttributes</source_model>
                     <can_be_empty>1</can_be_empty>
                     <comment><![CDATA[Each selected attribute travels with every product as metadata and is written into the text Quissly searches, so "linen", "merino" or a brand name match even when the description never says so. Pre-filled with the attributes shoppers usually search by; internal ones (cost, pricing, SEO, layout) are never offered. <strong>Saving a changed list re-sends your whole catalog</strong> so existing products pick it up - allow the sync a few minutes on a large store.]]></comment>
+                </field>
+            </group>
+            <!-- How often the module checks for a new release (Model/Update/Updater). The module's
+                 files are shared by every website, so the setting is the store's alone. -->
+            <group id="updates" translate="label" type="text" sortOrder="40"
+                   showInDefault="1" showInWebsite="0" showInStore="0">
+                <label>Updates</label>
+                <field id="check_every" translate="label comment" type="select" sortOrder="10"
+                       showInDefault="1" showInWebsite="0" showInStore="0" canRestore="1">
+                    <label>Update check frequency</label>
+                    <source_model>Quissly\Search\Model\Config\Source\UpdateFrequency</source_model>
+                    <comment>How often Quissly checks for a new version of this module. A new version installs itself (the store shows its maintenance page for about a minute), so this is at most how long your store waits for it. Never: no automatic updates - run bin/magento quissly:update to install one.</comment>
                 </field>
             </group>
         </section>

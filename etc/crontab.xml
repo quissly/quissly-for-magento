@@ -22,16 +22,22 @@
         <job name="quissly_showcase" instance="Quissly\Search\Cron\ShowcaseCron" method="execute">
             <schedule>*/15 * * * *</schedule>
         </job>
+        <!-- Shopping activity for Quissly's analytics: the queue a shopper's request writes
+             (Model/Events), sent one event per call. -->
+        <job name="quissly_events" instance="Quissly\Search\Cron\EventsCron" method="execute">
+            <schedule>* * * * *</schedule>
+        </job>
         <job name="quissly_reconciliation" instance="Quissly\Search\Cron\ReconciliationCron" method="execute">
             <!-- Weekly re-push: the false-success-bug backstop. Sunday 03:00. -->
             <schedule>0 3 * * *</schedule>
         </job>
     </group>
-    <!-- A newer release on GitHub, checked once a day and installed (Model/Update/Updater).
-         Hourly ticks: the Updater keeps the day itself, and retries a failed check sooner. -->
+    <!-- A newer release on GitHub, checked and installed (Model/Update/Updater) at the
+         merchant's "Update check frequency". Ticks every 5 minutes (the shortest frequency);
+         the Updater keeps its own time. -->
     <group id="quissly_update">
         <job name="quissly_update" instance="Quissly\Search\Cron\UpdateCron" method="execute">
-            <schedule>41 * * * *</schedule>
+            <schedule>*/5 * * * *</schedule>
         </job>
     </group>
 </config>

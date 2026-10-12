@@ -295,6 +295,16 @@ class Dashboard extends Template
                 'quissly' => MediaCapability::STATUS_OK,
                 'detail' => (string)__('Presentation only - needs no Quissly enablement.'),
             ],
+            [
+                // Accepted live on api.quissly.com (2026-10-08); every account takes events.
+                'label' => __('Shopping activity'),
+                'merchant' => $this->settings->isEventsEnabled($websiteId),
+                'quissly' => MediaCapability::STATUS_OK,
+                'detail' => (string)__(
+                    'Product views, searches, cart and wishlist adds and paid orders, '
+                    . 'for the Quissly Admin Panel analytics.'
+                ),
+            ],
         ];
     }
 

@@ -11,7 +11,7 @@ namespace Quissly\Search\Model\Api;
  * The two Quissly signing schemes. Pure PHP - no Magento dependencies - so the
  * golden-vector unit tests run without the framework.
  *
- * LIVE-CONFIRMED against the deployed API (2026-08-14):
+ * What Quissly's API verifies:
  *  - v2 (search family): sign "METHOD\nPATH\nTS_MS\nNONCE",
  *    RSA-SHA256 PKCS#1 v1.5, base64. The SAME timestamp and nonce must be sent
  *    as X-Timestamp / X-Nonce. The path is part of the signed string and must

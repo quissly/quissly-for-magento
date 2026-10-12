@@ -15,7 +15,7 @@ use Quissly\Search\Model\Api\StoreBilling;
 use Quissly\Search\Model\Connect\Onboarding;
 
 /**
- * Every Billing action, against Quissly's store billing API (STORE_BILLING_API.md).
+ * Every Billing action, against Quissly's store billing API.
  *
  * The page posts op= plus the subscription (or invoice) id; previews come back already in
  * words, so billing.js carries no prices or dates of its own. Quissly checks the id belongs to
@@ -24,6 +24,13 @@ use Quissly\Search\Model\Connect\Onboarding;
 class Manage extends Action implements HttpPostActionInterface
 {
     public const ADMIN_RESOURCE = 'Quissly_Search::billing';
+
+    /** Refund refusals a person can still look at (POST /refund-claim); others need no claim. */
+    public const CLAIMABLE = ['used', 'too_old', 'carried_extras', 'unpaid', 'ended'];
+
+    /** A refund claim's length, as Quissly accepts it. */
+    public const CLAIM_MIN = 10;
+    public const CLAIM_MAX = 4000;
 
     /**
      * @param Action\Context $context
@@ -57,7 +64,8 @@ class Manage extends Action implements HttpPostActionInterface
                 $checkout = $this->billing->checkout(
                     $websiteId,
                     (string)$request->getParam('plan_id'),
-                    (string)$request->getParam('billing_cycle')
+                    (string)$request->getParam('billing_cycle'),
+                    max(0.0, (float)$request->getParam('auto_topup_max_usd'))
                 );
                 if ($checkout['ok'] && $checkout['kind'] === 'free_activated') {
                     $this->messageManager->addSuccessMessage(__('The free plan is on.'));
@@ -133,6 +141,67 @@ class Manage extends Action implements HttpPostActionInterface
                 }
                 return $this->done($result);
 
+            case 'auto_topup':
+                $max = max(0.0, round((float)$request->getParam('max_usd'), 2));
+                $result = $this->billing->manage($websiteId, $op, $id, ['max_usd' => $max]);
+                if ($result['ok']) {
+                    $this->messageManager->addSuccessMessage($max > 0
+                        ? __('Automatic top-up is on: up to %1 a month.', $this->amount($max, 'USD'))
+                        : __('Automatic top-up is off.'));
+                }
+                return $this->done($result);
+
+            case 'refund_preview':
+                $result = $this->billing->manage($websiteId, $op, $id);
+                $data = $result['data'];
+                $reason = (string)($data['reason'] ?? '');
+                return $this->answer($result['ok']
+                    ? [
+                        'ok' => true,
+                        'eligible' => !empty($data['eligible']),
+                        'claim' => empty($data['eligible']) && in_array($reason, self::CLAIMABLE, true),
+                        'summary' => $this->refundSummary($data),
+                    ]
+                    : ['ok' => false, 'message' => $result['message']]);
+
+            case 'refund':
+                $result = $this->billing->manage($websiteId, $op, $id);
+                if ($result['ok']) {
+                    $data = $result['data'];
+                    $amount = $this->amount($data['amount'] ?? 0, (string)($data['currency'] ?? 'USD'));
+                    $this->messageManager->addSuccessMessage(!empty($data['ends_plan'])
+                        ? __(
+                            'Refund requested: %1 goes back to your card within a few days. The plan has ended.',
+                            $amount
+                        )
+                        : __(
+                            'Refund requested: %1 goes back to your card within a few days. The extra requests '
+                            . 'it paid for were removed.',
+                            $amount
+                        ));
+                }
+                return $this->done($result);
+
+            case 'refund_claim':
+                $reason = trim((string)$request->getParam('reason'));
+                $length = mb_strlen($reason);
+                if ($length < self::CLAIM_MIN || $length > self::CLAIM_MAX) {
+                    return $this->answer(['ok' => false, 'message' => (string)__(
+                        'Tell us what happened in %1 to %2 characters.',
+                        self::CLAIM_MIN,
+                        self::CLAIM_MAX
+                    )]);
+                }
+                $result = $this->billing->manage($websiteId, $op, $id, ['reason' => $reason]);
+                if ($result['ok']) {
+                    $this->messageManager->addSuccessMessage(__(
+                        'Your refund request was sent (ticket %1). A person replies within %2 business days.',
+                        (string)($result['data']['ticket_number'] ?? $result['data']['ticket_id'] ?? ''),
+                        (int)($result['data']['reply_within_business_days'] ?? 3)
+                    ));
+                }
+                return $this->done($result);
+
             case 'payment_method':
             case 'invoice_pdf':
                 $result = $this->billing->manage($websiteId, $op, $id);
@@ -166,6 +235,32 @@ class Manage extends Action implements HttpPostActionInterface
                 return (string)__('Free during your trial. The plan changes now.');
         }
         return (string)__('Your plan changes.');
+    }
+
+    /**
+     * What a refund would do now, or why it cannot be made automatically.
+     *
+     * Quissly's preview carries the sentence itself (amount and what ends); the claim's offer is
+     * added when a person can still look at it.
+     *
+     * @param array $preview {eligible, reason, message, amount, currency, ends_plan}
+     * @return string
+     */
+    private function refundSummary(array $preview): string
+    {
+        $message = trim((string)($preview['message'] ?? ''));
+        if (!empty($preview['eligible'])) {
+            return $message !== '' ? $message : (string)__(
+                '%1 goes back to your card.',
+                $this->amount($preview['amount'] ?? 0, (string)($preview['currency'] ?? 'USD'))
+            );
+        }
+        if (in_array((string)($preview['reason'] ?? ''), self::CLAIMABLE, true)) {
+            return trim($message . ' ' . (string)__(
+                'You can still ask for a refund: tell us what happened, and a person replies within 3 business days.'
+            ));
+        }
+        return $message !== '' ? $message : (string)__('This plan cannot be refunded.');
     }
 
     /**

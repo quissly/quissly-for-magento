@@ -52,4 +52,19 @@
             <column name="website_id"/>
         </index>
     </table>
+    <table name="quissly_event_queue" resource="default" engine="innodb" comment="Quissly shopping events waiting to be sent">
+        <column xsi:type="int" name="queue_id" unsigned="true" nullable="false" identity="true" comment="Queue row id"/>
+        <column xsi:type="smallint" name="website_id" unsigned="true" nullable="false" comment="Website id"/>
+        <column xsi:type="text" name="body" nullable="false" comment="Request body (JSON)"/>
+        <column xsi:type="smallint" name="attempts" unsigned="true" nullable="false" default="0" comment="Send attempts"/>
+        <column xsi:type="int" name="created_at" unsigned="true" nullable="false" default="0" comment="Recorded at (unix seconds)"/>
+        <column xsi:type="int" name="next_at" unsigned="true" nullable="false" default="0" comment="Not sent before (unix seconds)"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="queue_id"/>
+        </constraint>
+        <index referenceId="QUISSLY_EVENT_QUEUE_WEBSITE_NEXT" indexType="btree">
+            <column name="website_id"/>
+            <column name="next_at"/>
+        </index>
+    </table>
 </schema>

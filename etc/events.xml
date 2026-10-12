@@ -32,4 +32,13 @@
     <event name="cataloginventory_stock_item_save_after">
         <observer name="quissly_stock_save" instance="Quissly\Search\Observer\StockObserver"/>
     </event>
+    <!-- Shopping activity: a paid order (Model/Events/PurchaseEvent). Global, not frontend:
+         an invoice is paid at checkout, from the admin, or by a payment provider's callback.
+         Like the catalog observers, these only write a queue row. -->
+    <event name="sales_order_place_after">
+        <observer name="quissly_event_order_placed" instance="Quissly\Search\Observer\Events\OrderPlacedObserver"/>
+    </event>
+    <event name="sales_order_invoice_pay">
+        <observer name="quissly_event_invoice_paid" instance="Quissly\Search\Observer\Events\InvoicePaidObserver"/>
+    </event>
 </config>
