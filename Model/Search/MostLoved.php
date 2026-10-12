@@ -59,39 +59,49 @@ class MostLoved
     }
 
     /**
-     * Products for Configuration's picker: name or SKU containing the query, visible on their own.
+     * Products for Configuration's picker, a page at a time.
      *
-     * The website's products only, named in its default store view, at most $limit, each with why
-     * it cannot be shown ('' when it can).
+     * Name or SKU containing the query - under 2 characters, the whole catalog (the picker opens
+     * on it, as the Shopify app's) - and visible on their own.
+     * The website's products only, named in its default store view, by name, $limit a page, each
+     * with why it cannot be shown ('' when it can), and whether a next page exists.
      *
      * @param string $query
      * @param int|null $websiteId
      * @param int $storeId
+     * @param int $page from 1
      * @param int $limit
-     * @return array[] sku, name, image, reason
+     * @return array{items: array[], more: bool} items: sku, name, image, reason
      */
-    public function search(string $query, ?int $websiteId, int $storeId, int $limit = 20): array
+    public function search(string $query, ?int $websiteId, int $storeId, int $page = 1, int $limit = 20): array
     {
         $query = trim($query);
-        if (mb_strlen($query) < 2) {
-            return [];
-        }
-        $like = '%' . strtr($query, ['\\' => '\\\\', '%' => '\\%', '_' => '\\_']) . '%';
         $collection = $this->collections->create();
         $collection->setStoreId($storeId)
             ->addAttributeToSelect(['name', 'thumbnail'])
-            ->addAttributeToFilter([['attribute' => 'name', 'like' => $like], ['attribute' => 'sku', 'like' => $like]])
             ->addAttributeToFilter('visibility', ['neq' => Visibility::VISIBILITY_NOT_VISIBLE])
             ->setOrder('name', 'ASC')
-            ->setPageSize($limit);
+            ->setPageSize($limit)
+            ->setCurPage(max(1, $page));
+        if (mb_strlen($query) >= 2) {
+            $like = '%' . strtr($query, ['\\' => '\\\\', '%' => '\\%', '_' => '\\_']) . '%';
+            $collection->addAttributeToFilter(
+                [['attribute' => 'name', 'like' => $like], ['attribute' => 'sku', 'like' => $like]]
+            );
+        }
         if ($websiteId !== null) {
             $collection->addWebsiteFilter([$websiteId]);
+        }
+        // Magento answers a page past the last with the last one again: none, then.
+        $last = (int)$collection->getLastPageNumber();
+        if ($page > $last) {
+            return ['items' => [], 'more' => false];
         }
         $out = [];
         foreach ($collection as $product) {
             $out[] = $this->item((string)$product->getSku(), $websiteId, $storeId);
         }
-        return $out;
+        return ['items' => $out, 'more' => $page < $last];
     }
 
     /**

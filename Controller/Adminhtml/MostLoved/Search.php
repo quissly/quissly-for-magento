@@ -16,8 +16,9 @@ use Quissly\Search\Model\Search\MostLoved;
 
 /**
  * The Most loved picker's search (web/js/most-loved-picker.js): products whose name or SKU
- * contains `q`, for the website in `website` (else the default store's), as
- * [{sku, name, image, note}] - note says why a product cannot be shown, '' when it can.
+ * contains `q` (under 2 characters: the whole catalog), page `page` of 20, for the website in
+ * `website` (else the default store's), as {items: [{sku, name, image, note}], more} - note says
+ * why a product cannot be shown, '' when it can.
  * Admin only, behind the Configuration permission; it reads the catalog and changes nothing.
  */
 class Search extends Action implements HttpGetActionInterface
@@ -55,15 +56,21 @@ class Search extends Action implements HttpGetActionInterface
             $storeId = (int)$website->getDefaultStore()->getId();
             $websiteId = (int)$website->getId();
         } catch (\Throwable $e) {
-            return $result->setData([]);
+            return $result->setData(['items' => [], 'more' => false]);
         }
         $reasons = [
             'out_of_stock' => (string)__('out of stock'),
             'not_visible' => (string)__('not visible in the store'),
             'not_found' => (string)__('no product has this SKU'),
         ];
+        $found = $this->mostLoved->search(
+            (string)$this->getRequest()->getParam('q'),
+            $websiteId,
+            $storeId,
+            max(1, (int)$this->getRequest()->getParam('page', 1))
+        );
         $out = [];
-        foreach ($this->mostLoved->search((string)$this->getRequest()->getParam('q'), $websiteId, $storeId) as $item) {
+        foreach ($found['items'] as $item) {
             $out[] = [
                 'sku' => $item['sku'],
                 'name' => $item['name'],
@@ -71,6 +78,6 @@ class Search extends Action implements HttpGetActionInterface
                 'note' => $item['reason'] === '' ? '' : ($reasons[$item['reason']] ?? $item['reason']),
             ];
         }
-        return $result->setData($out);
+        return $result->setData(['items' => $out, 'more' => $found['more']]);
     }
 }
