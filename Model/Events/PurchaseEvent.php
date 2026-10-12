@@ -8,7 +8,7 @@ declare(strict_types=1);
 namespace Quissly\Search\Model\Events;
 
 /**
- * When an order counts as a purchase, and what it says (Keso, 2026-10-08: when it is paid).
+ * When an order counts as a purchase (when it is paid), and what it says.
  *
  * Online payment: when its first invoice is paid (`sales_order_invoice_pay` - at checkout
  * for "authorize and capture", at capture for "authorize only"); a second, partial invoice

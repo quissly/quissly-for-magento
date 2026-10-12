@@ -11,5 +11,6 @@
         <!-- Search bar suggestions: the language select and the pills (SearchSuggestionsField). -->
         <css src="Quissly_Search::css/config-suggestions.css"/>
         <script src="Quissly_Search::js/config-suggestions.js" defer="defer"/>
+        <script src="Quissly_Search::js/most-loved-picker.js" defer="defer"/>
     </head>
 </page>

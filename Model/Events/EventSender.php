@@ -64,10 +64,12 @@ class EventSender
     public function run(int $websiteId, int $now): array
     {
         $counts = ['sent' => 0, 'dropped' => 0, 'retried' => 0];
-        if (!$this->settings->isEventsEnabled($websiteId) || !$this->settings->isConfigured($websiteId)) {
+        if (!$this->settings->isConfigured($websiteId)) {
             $counts['dropped'] = $this->queue->clear($websiteId);
             return $counts;
         }
+        // "Shopping activity" off: shoppers' events are dropped, the store's own still go.
+        $shoppers = $this->settings->isEventsEnabled($websiteId);
         $lock = self::LOCK_PREFIX . $websiteId;
         if (!$this->lockManager->lock($lock, 0)) {
             return $counts;
@@ -75,7 +77,7 @@ class EventSender
         try {
             $counts['dropped'] += $this->queue->clear($websiteId, $now - EventOutcome::MAX_AGE_SECONDS);
             $counts['dropped'] += $this->queue->trim($websiteId, self::KEEP);
-            $this->send($websiteId, $now, $counts);
+            $this->send($websiteId, $now, $counts, $shoppers);
         } finally {
             $this->lockManager->unlock($lock);
         }
@@ -97,9 +99,10 @@ class EventSender
      * @param int $websiteId
      * @param int $now
      * @param array $counts updated in place
+     * @param bool $shoppers the website's "Shopping activity" switch (off: only the store's own go)
      * @return void
      */
-    private function send(int $websiteId, int $now, array &$counts): void
+    private function send(int $websiteId, int $now, array &$counts, bool $shoppers): void
     {
         $token = (string)$this->settings->apiToken($websiteId);
         $pem = (string)$this->settings->privateKeyPem($websiteId);
@@ -112,7 +115,9 @@ class EventSender
             if (microtime(true) - $started > self::TIME_BUDGET) {
                 break;
             }
-            if ($row['body'] === []) {
+            if ($row['body'] === []
+                || (!$shoppers && ($row['body']['metadata']['source'] ?? '') !== EventBody::SOURCE_STORE)
+            ) {
                 $done[] = $row['queue_id'];
                 $counts['dropped']++;
                 continue;

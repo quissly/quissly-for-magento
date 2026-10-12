@@ -130,6 +130,41 @@ class Recorder
     }
 
     /**
+     * Record an event about the store itself (VersionReport): no shopper, no user id.
+     *
+     * Needs only a connected website - not the "Shopping activity" switch.
+     *
+     * @param int $websiteId
+     * @param string $type
+     * @param array $metadata
+     * @return bool recorded
+     */
+    public function store(int $websiteId, string $type, array $metadata): bool
+    {
+        try {
+            if (!$this->settings->isConfigured($websiteId)) {
+                return false;
+            }
+            $now = time();
+            $store = $this->storeManager->getWebsite($websiteId)->getDefaultStore();
+            $this->queue->add($websiteId, $this->body->envelope(
+                $type,
+                $metadata,
+                null,
+                [],
+                $this->host($store === null ? '' : (string)$store->getBaseUrl()),
+                EventBody::SOURCE_STORE,
+                $this->ids->generateId(),
+                $now
+            ), $now);
+            return true;
+        } catch (\Throwable $e) {
+            $this->logger->warning('[quissly] store event not recorded type=' . $type . ' error=' . get_class($e));
+            return false;
+        }
+    }
+
+    /**
      * The store's host ("shop.example.com") - Shopify sends its myshopify domain.
      *
      * @param string $baseUrl

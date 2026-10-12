@@ -9,19 +9,23 @@ namespace Quissly\Search\Cron;
 
 use Magento\Store\Model\StoreManagerInterface;
 use Quissly\Search\Model\Events\EventSender;
+use Quissly\Search\Model\Events\VersionReport;
 
 /**
- * Per-minute send of the queued shopping events, every website.
+ * Per-minute send of the queued events, every website - after the version report has queued
+ * its own when one is due (Model/Events/VersionReport).
  */
 class EventsCron
 {
     /**
      * @param EventSender $sender
      * @param StoreManagerInterface $storeManager
+     * @param VersionReport $versionReport
      */
     public function __construct(
         private readonly EventSender $sender,
-        private readonly StoreManagerInterface $storeManager
+        private readonly StoreManagerInterface $storeManager,
+        private readonly VersionReport $versionReport
     ) {
     }
 
@@ -32,6 +36,11 @@ class EventsCron
      */
     public function execute(): void
     {
+        try {
+            $this->versionReport->run(time());
+        } catch (\Throwable $e) {
+            unset($e); // never in the way of the shoppers' events
+        }
         foreach ($this->storeManager->getWebsites() as $website) {
             $this->sender->run((int)$website->getId(), time());
         }

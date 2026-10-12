@@ -14,8 +14,10 @@ use Quissly\Search\Model\Config\Settings;
 use Quissly\Search\Model\Search\MostLoved;
 
 /**
- * The Most loved lists (shown, backups): the SKU box, and under it the products the SKUs are -
- * each with why it cannot be shown, if it cannot - and, under the backups, what still needs
+ * The Most loved lists (shown, backups): the SKU box with the product picker over it
+ * (web/js/most-loved-picker.js - search by name or SKU, choose, drag to reorder; the box stays
+ * what the form saves), the products the SKUs are - each with why it cannot be shown, if it
+ * cannot; the list a page without the script shows - and, under the backups, what still needs
  * fixing (MostLoved::status()), as the Quissly Shopify app's banner says it.
  */
 class MostLovedField extends Field
@@ -53,21 +55,66 @@ class MostLovedField extends Field
             'not_found' => (string)__('no product has this SKU'),
         ];
         $html = parent::_getElementHtml($element);
-        if ($skus !== []) {
+        $items = [];
+        foreach ($skus as $sku) {
+            $item = $this->mostLoved->item($sku, $websiteId, $storeId);
+            $item['note'] = $item['reason'] === '' ? '' : ($reasons[$item['reason']] ?? $item['reason']);
+            unset($item['reason']);
+            $items[] = $item;
+        }
+        if ($items !== []) {
             $html .= '<ol class="q-most-loved__list">';
-            foreach ($skus as $sku) {
-                $state = $this->mostLoved->state($sku, $websiteId, $storeId);
-                $html .= '<li>' . $this->escapeHtml($state['title'])
-                    . ($state['title'] !== $sku
-                        ? ' <span class="q-most-loved__sku">' . $this->escapeHtml($sku) . '</span>'
+            foreach ($items as $item) {
+                $html .= '<li>' . $this->escapeHtml($item['name'])
+                    . ($item['name'] !== $item['sku']
+                        ? ' <span class="q-most-loved__sku">' . $this->escapeHtml($item['sku']) . '</span>'
                         : '')
-                    . ($state['reason'] !== '' ? ' <span class="q-most-loved__problem">- '
-                        . $this->escapeHtml($reasons[$state['reason']] ?? $state['reason']) . '</span>' : '')
+                    . ($item['note'] !== '' ? ' <span class="q-most-loved__problem">- '
+                        . $this->escapeHtml($item['note']) . '</span>' : '')
                     . '</li>';
             }
             $html .= '</ol>';
         }
+        $html .= $this->pickerHtml($element, $backups, $items, $websiteId);
         return $backups ? $html . $this->statusHtml($websiteId, $storeId) : $html;
+    }
+
+    /**
+     * The picker over the SKU box: its configuration for web/js/most-loved-picker.js.
+     *
+     * @param AbstractElement $element
+     * @param bool $backups
+     * @param array[] $items the picks, in order: sku, name, image, note
+     * @param int|null $websiteId
+     * @return string
+     */
+    private function pickerHtml(AbstractElement $element, bool $backups, array $items, ?int $websiteId): string
+    {
+        $config = [
+            'field' => '#' . $element->getHtmlId(),
+            'list' => $backups ? 'backups' : 'shown',
+            'max' => $backups ? MostLoved::BACKUPS : MostLoved::SHOWN,
+            'searchUrl' => $this->getUrl('quissly/mostloved/search', ['website' => (int)$websiteId]),
+            'items' => $items,
+            'text' => [
+                'placeholder' => (string)__('Search products by name or SKU'),
+                'remove' => (string)__('Remove'),
+                'move' => (string)__('Move'),
+                'moveHint' => (string)__('Drag to change the order, or use the arrow keys'),
+                'searching' => (string)__('Searching...'),
+                'none' => (string)__('No products found.'),
+                'error' => (string)__('Could not search just now. Try again in a moment.'),
+                'picked' => (string)__('already picked'),
+                'inOther' => (string)($backups
+                    ? __('already in Shown products')
+                    : __('already in Backup products')),
+                'count' => (string)__('%1 of %2 picked'),
+                'full' => (string)__('%1 of %2 picked - remove one to pick another'),
+            ],
+        ];
+        return '<div class="q-picker" data-q-picker data-config="'
+            . $this->escapeHtmlAttr((string)json_encode($config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE))
+            . '"></div>';
     }
 
     /**

@@ -12,6 +12,7 @@ use Magento\Catalog\Helper\Image as ImageHelper;
 use Magento\Catalog\Model\Product;
 use Magento\Catalog\Model\Product\Attribute\Source\Status;
 use Magento\Catalog\Model\Product\Visibility;
+use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory;
 use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
 use Magento\Framework\Pricing\PriceCurrencyInterface;
 use Magento\Review\Model\ReviewFactory;
@@ -44,6 +45,7 @@ class MostLoved
      * @param PriceCurrencyInterface $prices
      * @param ReviewFactory $reviews
      * @param MostLovedPicks $picks
+     * @param CollectionFactory $collections
      */
     public function __construct(
         private readonly Settings $settings,
@@ -51,8 +53,72 @@ class MostLoved
         private readonly ImageHelper $images,
         private readonly PriceCurrencyInterface $prices,
         private readonly ReviewFactory $reviews,
-        private readonly MostLovedPicks $picks
+        private readonly MostLovedPicks $picks,
+        private readonly CollectionFactory $collections
     ) {
+    }
+
+    /**
+     * Products for Configuration's picker: name or SKU containing the query, visible on their own.
+     *
+     * The website's products only, named in its default store view, at most $limit, each with why
+     * it cannot be shown ('' when it can).
+     *
+     * @param string $query
+     * @param int|null $websiteId
+     * @param int $storeId
+     * @param int $limit
+     * @return array[] sku, name, image, reason
+     */
+    public function search(string $query, ?int $websiteId, int $storeId, int $limit = 20): array
+    {
+        $query = trim($query);
+        if (mb_strlen($query) < 2) {
+            return [];
+        }
+        $like = '%' . strtr($query, ['\\' => '\\\\', '%' => '\\%', '_' => '\\_']) . '%';
+        $collection = $this->collections->create();
+        $collection->setStoreId($storeId)
+            ->addAttributeToSelect(['name', 'thumbnail'])
+            ->addAttributeToFilter([['attribute' => 'name', 'like' => $like], ['attribute' => 'sku', 'like' => $like]])
+            ->addAttributeToFilter('visibility', ['neq' => Visibility::VISIBILITY_NOT_VISIBLE])
+            ->setOrder('name', 'ASC')
+            ->setPageSize($limit);
+        if ($websiteId !== null) {
+            $collection->addWebsiteFilter([$websiteId]);
+        }
+        $out = [];
+        foreach ($collection as $product) {
+            $out[] = $this->item((string)$product->getSku(), $websiteId, $storeId);
+        }
+        return $out;
+    }
+
+    /**
+     * A pick as the picker shows it: SKU, name, thumbnail and why it cannot be shown ('' when it can).
+     *
+     * @param string $sku
+     * @param int|null $websiteId
+     * @param int $storeId
+     * @return array{sku:string, name:string, image:string, reason:string}
+     */
+    public function item(string $sku, ?int $websiteId, int $storeId): array
+    {
+        $product = $this->load($sku, $storeId);
+        if ($product === null) {
+            return ['sku' => $sku, 'name' => $sku, 'image' => '', 'reason' => 'not_found'];
+        }
+        try {
+            $image = (string)$this->images->init($product, 'product_thumbnail_image')->getUrl();
+        } catch (\Throwable $e) {
+            $image = '';
+        }
+        return [
+            'sku' => $sku,
+            'name' => (string)$product->getName(),
+            'image' => $image,
+            'reason' => $this->reason($product, $websiteId),
+        ];
     }
 
     /**

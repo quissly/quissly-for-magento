@@ -38,8 +38,8 @@ class QsearchResponseParser
                 continue;
             }
             $ids[] = $id;
-            // Which child of a configurable actually matched. Live-confirmed
-            // 2026-09-08: searching "red tee" answers
+            // Which child of a configurable actually matched. Searching
+            // "red tee" answers
             // {"id":"58","score":0.91,"top_variant_id":"56"} - 58 is the parent
             // Magento renders, 56 is the red child the shopper meant. Top level,
             // not inside metadata. Absent for simple products.

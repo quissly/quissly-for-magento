@@ -250,14 +250,14 @@
                     <backend_model>Quissly\Search\Model\Config\Backend\MostLovedSkus</backend_model>
                     <frontend_model>Quissly\Search\Block\Adminhtml\Config\MostLovedField</frontend_model>
                     <label>Shown products (8)</label>
-                    <comment>SKUs, one per line. Pick exactly 8. Shoppers see them in this order.</comment>
+                    <comment>Search by name or SKU and pick exactly 8. Shoppers see them in this order; drag to change it.</comment>
                 </field>
                 <field id="backups" translate="label comment" type="textarea" sortOrder="30"
                        showInDefault="1" showInWebsite="1" showInStore="0">
                     <backend_model>Quissly\Search\Model\Config\Backend\MostLovedSkus</backend_model>
                     <frontend_model>Quissly\Search\Block\Adminhtml\Config\MostLovedField</frontend_model>
                     <label>Backup products (4)</label>
-                    <comment>SKUs, one per line. Pick exactly 4, none of them already in Shown products. When a shown product is out of stock, the first available backup takes its place.</comment>
+                    <comment>Pick exactly 4, none of them already in Shown products. When a shown product is out of stock, the first available backup takes its place.</comment>
                 </field>
             </group>
             <group id="catalog" translate="label" type="text" sortOrder="30"

@@ -37,6 +37,9 @@ class EventBody
     /** A paid order - recorded by the store, not the shopper's browser (Shopify: "webhook"). */
     public const SOURCE_ORDER = 'order';
 
+    /** The store reporting on itself (VersionReport), not a shopper's action. */
+    public const SOURCE_STORE = 'store';
+
     public const MODALITIES = ['text', 'voice', 'image'];
 
     /** The storefront search's own limit. */
