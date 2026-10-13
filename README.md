@@ -1,89 +1,29 @@
 # Quissly for Magento
 
-> **Status: pre-release.** The module is built and live-tested. Download it from the
-> [latest release](https://github.com/quissly/quissly-for-magento/releases/latest) (see
-> *Install* below); after that it keeps itself up to date (see *Updates*).
+Quissly's AI search, chat and product discovery for Magento Open Source and Adobe Commerce. When a
+shopper searches, Quissly decides which products match and in what order; **your theme still shows
+them**, exactly as it shows any search today. If Quissly ever cannot answer, Magento's own search
+answers instead, so search never breaks.
 
-Quissly for Magento replaces your store's search results with AI-powered product
-discovery from [Quissly](https://quissly.com), while your theme keeps rendering
-everything exactly as before. Shoppers type in the same search box; better results come
-back. If Quissly is ever unreachable, your store silently falls back to Magento's native
-search - search never breaks.
+**Who installs this:** your developer or sysadmin. Magento has no zip upload for modules, so the
+install is done on the command line; everything after that is in the admin.
 
-**Who installs this:** your developer or sysadmin (command-line access to the Magento
-installation is required - Magento has no zip-upload module install).
+## Requirements
 
-## At a glance
-
-1. Unzip the module into `app/code` and run the standard Magento setup commands. Later
-   versions install themselves (see *Updates*).
-2. Open the **Quissly** menu. Until setup is done, every entry opens **Quissly Setup**:
-   three steps, in the Shopify app's design.
-   - **Your details** - your email (pre-filled) and store name, then **Connect &
-     continue**. Nothing to copy or paste: the module creates the account and stores the
-     credentials itself.
-   - **Choose a plan** - Quissly's plans. The free search plan starts at once; a paid
-     plan opens Quissly's payment page in a new tab.
-   - **Go live** - the first catalog sync starts on its own and its progress shows here.
-     When it has finished, **Finish Setup** switches Quissly search on (or **Save changes**
-     finishes setup and leaves search off, to switch on later in Configuration).
-3. Search on your storefront - results are now Quissly-ranked. Configuration, the
-   Dashboard and the Quissly Admin Panel open as usual from then on.
-
-## Prerequisites
-
-- Magento Open Source or Adobe Commerce **2.4.7+**, PHP 8.2/8.3.
-- Nothing from Quissly in advance. The Connect button creates the account for you; a
-  Quissly plan is needed before the catalog sync will be accepted.
-- Outbound HTTPS from your server to `api.quissly.com`.
-- **An accurate server clock (NTP).** Every request is cryptographically signed with a
-  timestamp valid for ±60 seconds - a drifting clock makes Quissly reject requests in a
-  way that looks like broken credentials.
-- Cron running (standard Magento requirement) - the catalog sync and the automatic
+- **Magento Open Source or Adobe Commerce 2.4.7 or newer** (tested on 2.4.8), **PHP 8.2 or 8.3**.
+- Magento's cron running (a standard Magento requirement): the catalog sync, shopping activity and
   updates run through it.
-- For automatic updates: outbound HTTPS to `api.github.com` and `github.com`, and the
-  module's files writable by the user cron runs as (Magento's own recommendation: cron runs
-  as the files' owner).
-
-## What the module changes on your system
-
-- One module under `app/code/Quissly/Search`. An automatic update replaces it and keeps the
-  previous version in `var/quissly/update/backup` until the next one.
-- Configuration entries under the `quissly/*` path (credentials stored encrypted by
-  Magento's own encryption).
-- Four small database tables for the sync queue, sync state, the stock snapshot and the
-  shopping events waiting to be sent.
-- Footer script tags for the storefront features that are switched on - the search overlay
-  once AI Search is live, and Quick, voice, image and QChat when you enable them. Nothing
-  is emitted for a feature that is off.
-- **Shopping activity for Quissly's analytics** (Stores → Configuration → Quissly → Features →
-  *Shopping activity for Quissly analytics*, on by default): product page views, searches,
-  adds to cart and to the wishlist, and paid orders (an online payment when its first invoice
-  is paid, an offline one when the order is placed) go to Quissly for the Quissly Admin
-  Panel's analytics - the Quissly Shopify app sends the same. Product ids, quantities, prices
-  and order totals with the visitor id above - never a name, email, address or IP. Nothing is
-  recorded for a guest who has not accepted your cookie notice. A product or search results
-  page carries one hidden element and a small script for it; the cron sends the events.
-- One first-party cookie, `quissly_uid` (a random id, one year, HttpOnly), set on a guest's
-  first search so Quissly's analytics count a returning visitor once. It is not set while
-  your cookie notice (*Cookie Restriction Mode*) has not been accepted - see Security notes.
-- **Search results pages are no longer kept in the full-page cache while AI Search is
-  live**, so every search reaches Quissly and is counted, with who searched. Every other
-  page caches exactly as before, and with AI Search off search pages cache as before too.
-- **No theme files and no template overrides.** On Quissly-served search results the module
-  makes one visible change: a result shows, and opens on, the variant that matched -
-  search "red tee" and you get the red one's picture and the red one preselected.
-  Everything else renders exactly as before.
+- Outbound HTTPS to `api.quissly.com` and `console.quissly.com`, and to GitHub (`github.com`,
+  `api.github.com`, `raw.githubusercontent.com`) for automatic updates.
+- An accurate server clock (NTP on): every request to Quissly is signed with the time, and a clock
+  more than a minute off is refused.
+- Nothing from Quissly in advance - Quissly Setup creates the account.
 
 ## Install
 
-Download `quissly-for-magento.zip` from the
-[latest release](https://github.com/quissly/quissly-for-magento/releases/latest). There is
-no package repository to configure and no account to create. Magento has no zip-upload
-screen, so the install itself is done from the command line.
-
-Unzip the archive into your Magento installation's `app/code` directory - the module
-must end up at `app/code/Quissly/Search` - then run the standard setup commands:
+Download **[quissly-for-magento.zip](https://github.com/quissly/quissly-for-magento/releases/latest/download/quissly-for-magento.zip)**
+(always the latest version) and unzip it into `app/code`, so the module ends up in
+`app/code/Quissly/Search`. Then run Magento's standard setup:
 
 ```bash
 curl -LO https://github.com/quissly/quissly-for-magento/releases/latest/download/quissly-for-magento.zip
@@ -96,194 +36,144 @@ bin/magento setup:static-content:deploy   # production mode only
 bin/magento cache:clean
 ```
 
-There is no Composer step. The module needs nothing your Magento installation does not
-already ship, so there is nothing to resolve or download.
+There is no Composer step: the module needs nothing your Magento does not already have.
 
-**Prefer Composer?** Every release is a tagged version of the public repository:
+**Prefer Composer?** Every release is a tagged version of this repository:
 
 ```bash
 composer config repositories.quissly vcs https://github.com/quissly/quissly-for-magento
 composer require quissly/module-search
 ```
 
-A Composer install is updated with `composer update quissly/module-search`; the automatic
-updates below leave it alone.
+A Composer install is updated with `composer update quissly/module-search`; the automatic updates
+leave it alone.
 
-### Updates
+## Quissly Setup
 
-The module checks for a newer release once a day (cron) and installs it by itself:
+Open the **Quissly** menu in the admin. Until setup is finished, every Quissly page opens
+**Quissly Setup**:
 
-1. It downloads the release zip from GitHub and checks it: **signed by Quissly** (a zip
-   without Quissly's signature is never installed, whoever published it), a complete
-   Quissly module, of the version announced.
-2. It puts the store in **maintenance mode** (unless it already was), moves the current
-   module to `var/quissly/update/backup` and puts the new one in its place.
-3. It runs `setup:upgrade` and `cache:flush` - in production mode also
-   `setup:di:compile` and `setup:static-content:deploy` (about a minute of maintenance
-   page on a small store, longer on a large one), then switches maintenance mode off.
+1. **Your details** - the email for your Quissly account (pre-filled with yours; Quissly's account
+   and billing emails go there, it cannot be changed later, and it must be on a real, public
+   domain), your store name and a short "What do you sell?" (drafted from your catalog - check it).
+   **Save & continue** creates your Quissly account and connects the store: a key pair is made and
+   stored encrypted by Magento, and there is nothing to copy or paste.
+2. **Choose a plan** - Search or Chat, monthly or annual, paid by **Manual invoice** (the default)
+   or **Credit card**. The free search plan starts at once. Once chosen, the plan is changed in
+   **Billing**.
+3. **Go live** - Quissly builds your services (about a minute), then your products are sent;
+   this starts by itself and the page updates without a refresh. When everything shows done, press
+   **Finish Setup**: Quissly now answers your store's search (and, with a chat plan, the chat is
+   switched on). **Do this later** finishes setup with search left off, to switch on later under
+   *Enable AI Search*.
 
-If any step fails, the previous version is put back and set up the same way, so the store
-comes back as it was; that version is not tried again, the next release is. Your settings,
-credentials and sync state live in the database and are never touched by an update. Each
-result is written to `var/log/quissly.log`.
+Search a product on your storefront: the results now come from Quissly. Add `?quissly_debug=1` to
+a search address to see which engine answered, and why Quissly stepped aside when it did (the
+badge shows only with that parameter).
 
-- `bin/magento quissly:update` checks and installs now (it also retries a version that
-  failed); `bin/magento quissly:update --status` shows what the last check found.
-- **Not updated automatically:** a Composer install (see above), and a store whose files
-  are a git checkout - whoever deploys it updates it. Unzip the new release over
-  `app/code/Quissly/Search` and run the setup commands, as for the install.
+**Connect works once per store.** Connecting again would create a second account and abandon
+everything synced to the first, so it is refused; to move to another Quissly account, ask Quissly.
 
-Then in the admin: **Stores → Configuration → Quissly**
+## The Quissly menu
 
-1. Enter the email address for your Quissly account. It is pre-filled with the address of
-   the admin user you are signed in as, which is usually the right one - it becomes the
-   owner of the Quissly account and the identity that opens the Quissly panel.
-   Your Quissly account is named after your **Store Name** (Stores → Configuration →
-   General → Store Information); set it before you connect, because it cannot be renamed
-   from Magento afterwards.
-2. Click **Connect to Quissly** (on **Quissly Setup** it is **Connect & continue**, and
-   steps 3-5 below then happen on that page: the first sync starts by itself and **Go
-   live** switches search on). That is the whole of it. The module generates a keypair,
-   creates your Quissly account, registers the key and stores the credentials. There is
-   nothing to copy, paste, or register anywhere else.
-   A **Setting up your store** progress bar runs for two to three minutes while Quissly
-   builds the account and the search service behind it; the page then reloads showing
-   your project id. Reloading during the bar is safe - it carries on where it was. The
-   Dashboard's sync button stays locked, with a countdown, until the bar has finished.
-3. Open **Quissly → Dashboard** and start the first catalog sync.
-4. Wait for it to finish. **Search and chat cannot be switched on until it does** - the
-   toggles stay greyed out and tell you how many products have been sent so far. That is
-   deliberate: searching an index that does not yet hold your catalogue returns nothing,
-   and nothing in Magento would report a fault.
-5. **Switch on *Enable AI Search*.** This is the step that changes your storefront, and
-   it is not automatic: the module ships with it **off**, and finishing the sync only
-   unlocks the toggle rather than flipping it. Until you do, your store keeps using
-   Magento's own search exactly as before - which is the safe default, not a fault.
-   Save, and your next search is Quissly-ranked.
+- **Configuration** (Stores → Configuration → Quissly) - every switch and list below, in folding
+  sections.
+- **Dashboard** - per website: whether Quissly is live, the first catalog sync, products sent,
+  connection health and both halves of every feature switch (yours and Quissly's).
+- **Quissly Admin Panel** - Quissly's own console, signed in for you.
+- **Billing** - your plans and this month's usage, invoices with their PDFs, change plan, buy
+  extra requests, automatic top-up, cancel or keep a plan, update your card and request a refund.
+  Every charge is shown before you confirm it; payments go through Paddle, never through Magento.
 
-**Connect only works once.** Creating a second account would abandon the first along with
-everything already synced to it, so the button refuses if credentials already exist. If
-you need to move to a different Quissly account, ask Quissly rather than reconnecting.
+## Configuration
 
-**What Quissly receives for each product.** Title, description, up to ten images, URL, prices,
-stock, categories, and the product attributes you choose under **Stores → Configuration →
-Quissly → Catalog data** (pre-filled with the ones shoppers search by: brand, color, size,
-material and so on; internal attributes such as cost are never offered). Those values are also
-written into the text Quissly searches, so "linen" matches even when the description never
-says it. Saving a changed list re-sends the whole catalog. Bundles are sent as one product at
-their lowest configured price with their options listed; grouped products are not sent.
-
-**Multiple websites?** Configuration (credentials included) supports Magento's standard
-scope switcher: configure once at Default for a single-site store, or switch to each
-website and give it its own Quissly credentials.
-
-> **If two websites share products, they need separate Quissly services.** Products are
-> identified by their Magento id, which is the same number on every website - so two
-> websites pointing at one Quissly service overwrite each other's copy of every shared
-> product. The last sync wins, and it carries that website's **title, description, URL and
-> stock**. An English and a German storefront sharing a catalogue end up with one language
-> for both, and shoppers can be handed links to the other website's domain. Websites with
-> genuinely separate catalogues never collide, because they never share an id.
->
-> The same applies to **currency**: prices are sent as plain numbers with no currency code,
-> so two websites in different currencies sharing a service put mixed-currency values in
-> one index, and sorting by price then compares them directly.
->
-> The Quissly Dashboard warns when it sees two websites resolving to the same service.
-
-## Verify it works - including the safety net
-
-1. Search for a product on your storefront: results should reflect Quissly ranking.
-2. Confirm which engine answered: add `?quissly_debug=1` to the search URL. A badge below
-   the results reads **Results by Quissly**. If it reads **Results by Magento search**, a
-   second line says why Quissly skipped the search (for example `sort:price` - the shopper
-   sorted by price - or `gate-closed` - the first catalog sync has not finished). Shoppers
-   never see it - it renders only when that parameter is present.
-3. Now prove the safety net. Point the module at an unreachable host:
-   `bin/magento config:set quissly/connection/api_base_url https://127.0.0.1:9 &&
-   bin/magento cache:clean config`, then search again. **Your store must still return
-   normal results**, and the badge must read **Results by Magento search**. That silent
-   fallback is the module's core safety property - verify it once so you trust it.
-4. Remove the override: `bin/magento config:set quissly/connection/api_base_url ""` and
-   clear the config cache. The badge should read **Results by Quissly** again.
-
-## How search behaves (not defects)
-
-- **A search with zero results shows your theme's normal "no results" page.** That's a
-  real answer from Quissly, not a failure.
-- **Filtered searches (layered navigation) use Magento's native search.** When a shopper
-  applies filters, the module deliberately steps aside so filters stay accurate.
-- **Sorting.** Quissly ranking applies to the default (Relevance) order. If a shopper picks
-  another sort - Price, Name, Position - the module steps aside for that request and
-  Magento's own search answers it, so the sort stays truthful. The sort options themselves
-  are your theme's; the module neither adds nor removes any.
-- **Results open on the variant that matched.** Searching "red tee" shows the red tee's
-  picture and opens the product with Red preselected (the link carries
-  `?quissly_variant=…` and `#attribute=option`). Voice and image searches do the same, and
-  so do the product links Quissly hands to chat. On Hyvä themes the link still preselects
-  the variant, but the result tile shows the parent's image.
-- **New or edited products appear in search after the sync catches up** (typically
-  within minutes; deletions can take a couple of minutes longer to disappear).
-
-## Optional features
-
-Beyond search, the module ships optional features, and they are yours to switch on.
-Quick Recommendations, voice, image and QChat are **off by default**; the Immersive
-Search Overlay is on by default but only ever appears once AI Search is live. On a
-theme with no search box the overlay also supplies the search button itself, beside
-your cart, account or language switcher (or wherever **Search button mount point**
-points it), falling back to a floating button on small screens, or wherever the
-inline button would not fit.
-
-Each is a single toggle in your admin, and nothing needs reinstalling or re-syncing after
-you flip one. Voice, image and QChat need nothing requested. **Quick Recommendations
-additionally needs Quissly to enable suggestions for your account** - until it is enabled
-the dropdown never appears and the Dashboard shows `blocked · not_enabled`; ask support once
-your first sync has finished.
-
-| Feature | What it does | Turn on in admin |
+| Setting | Default | What it does |
 |---|---|---|
-| **Voice search** | Mic button in the search box; shoppers speak, results open | Quissly → Features → *Enable voice search* |
-| **Image search** | Shoppers upload, snap or paste a photo (Ctrl+V in the search box) and get visually similar products; no matches shows your theme's normal empty page | *Enable image search* |
-| **Quick Recommendations** | Product suggestions while typing, replacing Magento's own dropdown. Two styles: a list, or scrollable cards | *Quick Recommendations* + *Quick Recommendations style* |
-| **QChat assistant** | Chat bubble that answers questions and recommends products; its *Add to Cart* puts the product in the store's own cart (products with options open their product page) | *Enable QChat* - the agent id is fetched for you |
-| **Search bar suggestions** | The search overlay types example searches into its empty bar, letter by letter and in random order, so shoppers see what they can ask; they stop the moment a shopper types. On by default: after the first sync, five suggestions are generated from your catalog (each checked to find products). Edit them as pills (× removes one, *Add* adds one), up to 20, one list per store language (pick it in *Language*), or *Reset to generated* | *Search bar suggestions* group: *Show typing suggestions*, *Suggestions* (with *Language* when the store has more than one) |
+| **Enable AI Search** | off until **Finish Setup** | Quissly answers storefront search. Locked until the first catalog sync is done. |
+| **Immersive Search Overlay** | on | Clicking your search box opens Quissly's search bar over the page. A theme without a search box gets a search button either way. |
+| **Search button mount point** | empty | Where that search button goes (a CSS selector); empty = beside your cart, account or language switcher. |
+| **Enable Voice Search** | off | A microphone button in the search box. |
+| **Enable Image Search** | off | Shoppers upload, snap or paste (Ctrl+V) a photo and get visually similar products. |
+| **Quick Recommendations** | off | Product suggestions while typing, as a list or as cards. Quissly also has to enable it for your account - ask once your first sync is done. |
+| **Enable QChat Widget** | off (on with a chat plan) | Quissly's chat; its *Add to Cart* puts products in your real Magento cart. The agent is found for you. |
+| **Shopping activity for Quissly analytics** | on | Sends product views, searches, adds to cart and wishlist, and paid orders to Quissly's analytics (see *Privacy*). |
+| **Search Examples** | generated | The example searches typed into the empty search bar, one list per store language, up to 20. Quissly writes them from your catalog after the first sync; edit, remove or reset them. |
+| **Search Suggestions** | on, Automatic | Buttons under the empty search bar. *Automatic* shows what Quissly generated; *Manual* shows your own, up to 10 per language. |
+| **Most Loved Products** | off | 8 product cards in the overlay, picked by you (plus 4 backups that step in when a pick is sold out or hidden). Click a field to browse your catalog, drag to reorder. |
+| **Catalog data** | brand, color, size, material... | Which product attributes are sent to Quissly (internal ones such as cost are never offered). Saving a change sends the whole catalog again. |
+| **Update check frequency** | 30 minutes | How often the module looks for a new version (5 minutes for testing, up to a day, or **Never**). |
 
-**If a feature is switched on but does nothing:** the control hides itself rather than
-sitting there dead, so an empty space where a mic or camera button should be means
-Quissly answered that the feature is unavailable for your account - contact support with
-your store's domain. Normal search is never affected while you sort it out.
+A switched-on feature that Quissly has not enabled for your account hides itself instead of sitting
+there dead - the Dashboard shows which half is missing. Normal search is never affected.
 
-## Where problems show up
+## Updates
 
-**Quissly → Dashboard** shows, per website: whether Quissly search is **Live** or **Not live
-yet**, whether the first catalog sync is complete (with counts), connection health and the
-last authentication error if any, and both halves of every optional feature's switch - yours
-and Quissly's. The Configuration page's *Keys & Connection* block carries the
-ACTIVE / INACTIVE / DEGRADED badge with the reason spelled out.
+New versions install themselves. At the frequency above, the module checks Quissly's releases on
+GitHub; a newer one is downloaded and **checked against Quissly's signature** (a file without it is
+never installed). The store then goes into maintenance mode, the current module is moved to
+`var/quissly/update/backup`, the new one is put in place and Magento's setup runs (`setup:upgrade`
+and `cache:flush`, in production mode also `setup:di:compile` and `setup:static-content:deploy` -
+about a minute of maintenance page on a small store). If any step fails, the previous version is put
+back the same way. Settings, credentials and sync state live in the database and are kept.
 
-**Quissly → Billing** shows your Quissly plans - one for search, one for chat - with what
-you have used this month, and lets you change plan, buy extra requests, cancel (at the end of
-the paid period) or keep a cancelled plan, undo a scheduled downgrade and update your card.
-Every charge is shown before you confirm it. Your invoices are listed with their PDFs.
-Payments go through Paddle on Quissly's pages; your card is never entered in Magento.
-Automatic top-up can be switched on when you start a plan or later under Extra requests: when the month's requests are about to run out, Quissly buys one more block on your card, up to the monthly maximum you set. **Request a refund** on a paid plan says straight away whether the refund is automatic; if it is not, you can describe what happened and a person replies within 3 business days.
+- `bin/magento quissly:update` checks and installs now; `bin/magento quissly:update --status` shows
+  what the last check found. Each update is written to `var/log/quissly.log`.
+- The module's files must be writable by the user cron runs as (Magento recommends cron runs as the
+  files' owner).
+- Not updated automatically: a Composer install, and a store whose files are a git checkout -
+  unzip the new release over `app/code/Quissly/Search` and run the setup commands there.
 
-**Quissly → Quissly Admin Panel** opens Quissly's own console inside your Magento admin,
-already signed in as the account Connect created - your catalogue as Quissly sees it, chat
-set-up (languages, colours, greeting), and what shoppers searched for. If it refuses to
-load, the page says which host answered and offers to open the panel in a new tab.
+## How search behaves
 
-The module also writes an operational log to
-`var/log/quissly.log` - status codes and counts only, never shopper queries and never
-credentials, so it's safe to share with support.
+- **Order:** results come in Quissly's order for the default (Relevance) sort. When a shopper picks
+  another sort (Price, Name, Position) Magento's own search answers, so the sort stays truthful.
+- **Filters:** a search refined with layered navigation is answered by Magento's own search, so the
+  filters stay exact.
+- **No results** shows your theme's normal "no results" page - that is Quissly's real answer.
+- **The matched variant:** search "red tee" and the result shows, and opens on, the red one (the
+  link carries `?quissly_variant=…`). On Hyvä themes the link preselects the variant but the tile
+  shows the parent's image.
+- **Changes appear after the sync catches up** - usually within minutes.
+- **Search results pages are not kept in the full-page cache while Quissly answers**, so every
+  search reaches Quissly. Every other page caches as before.
 
-## Rolling back
+## Several websites
 
-- **Turn it off temporarily:** disable "Enable search" in configuration - native search
-  resumes immediately. Sync keeps running in the background (harmless).
-- **Remove completely:** disable the module, delete its directory, then run the standard
-  setup cycle:
+All settings, credentials included, follow Magento's scope switcher: set them once at Default for a
+single website, or give each website its own Quissly connection.
+
+> **Two websites that share products need separate Quissly services.** Products are identified by
+> their Magento id, the same on every website, so two websites on one service overwrite each other's
+> copy of every shared product (title, description, URL, stock - and prices are sent without a
+> currency). The Dashboard warns when two websites point at the same service.
+
+## Privacy
+
+- To count a returning visitor once, a guest gets one first-party cookie on their first search,
+  `quissly_uid` (a random id, one year). With *Cookie Restriction Mode* on (Stores → Configuration →
+  General → Web → Default Cookie Settings), a guest who has not allowed cookies gets no cookie and
+  is sent as anonymous.
+- Each search tells Quissly `customer:<id>` for a signed-in customer or `guest:<random id>`, plus
+  the device type and operating system. Shopping activity sends product ids, quantities, prices and
+  order totals. **No name, email, address or IP address is ever sent.**
+- Credentials are encrypted with Magento's own encryption and never reach the browser or the logs.
+
+## Check the safety net (optional, two minutes)
+
+Point the module at an address that does not answer, search, and confirm the store still shows
+normal results (the debug badge then reads *Results by Magento search*):
+
+```bash
+bin/magento config:set quissly/connection/api_base_url https://127.0.0.1:9 && bin/magento cache:clean config
+# search the storefront, then put it back:
+bin/magento config:set quissly/connection/api_base_url "" && bin/magento cache:clean config
+```
+
+## Switching off and removing
+
+- **Off for now:** switch *Enable AI Search* off - Magento's own search answers at once. Nothing is
+  lost.
+- **Remove:**
 
   ```bash
   bin/magento module:disable Quissly_Search
@@ -291,40 +181,26 @@ credentials, so it's safe to share with support.
   bin/magento setup:upgrade && bin/magento setup:di:compile && bin/magento cache:flush
   ```
 
-  Removing a module this way leaves the three Quissly tables and the `quissly/*`
-  configuration rows behind - Magento only runs a module's own uninstall routine for
-  modules installed through Composer. They are inert once the module is gone; ask Quissly
-  for the cleanup statements if you want them removed.
+  This leaves the module's four tables (`quissly_*`) and its `quissly/*` configuration behind -
+  Magento runs a module's own uninstall only for Composer installs. They do nothing once the module
+  is gone; ask Quissly for the statements to remove them. Removing the configuration also removes
+  the store's Quissly connection, which cannot be made again with the same email.
 
 ## Troubleshooting
 
-| Symptom | Likely cause / fix |
+| What you see | What to do |
 |---|---|
-| Search and chat toggles are greyed out | The first catalog sync has not finished. Hover the toggle - it says how many products have been sent. Finish it from the Quissly Dashboard. |
-| Admin banner: "Quissly is not accepting catalog updates" | Your account has no active plan or quota, credentials were rejected, or this server's clock has drifted. The banner names which. Products changed meanwhile stay queued - nothing is lost. |
-| Dashboard health shows an authentication error | The store's Quissly credentials no longer match the account on Quissly's side - most often the store was connected, then its configuration was reset or copied to another store. Connecting again with the same address is refused ("Email already registered"); contact Quissly to re-attach the store. |
-| Dashboard health mentions clock drift | Server clock is more than 60s from Quissly's; every signature is rejected. Check NTP. |
-| Search results are native, dashboard's *First catalog sync* row says "Not complete" | Run/finish the first full sync from the dashboard. |
-| Not sure whether a search came from Quissly or Magento | Add `?quissly_debug=1` to any search URL. A small badge below the results says which engine answered, and when Magento answered, why Quissly skipped the search (also written to `var/log/quissly.log`). Shoppers never see it. |
-| Products missing from results | Check they're enabled, visible in search, in stock, and assigned to this website; then check sync progress. |
-| Everything configured, storefront unchanged | Caches: `bin/magento cache:clean`; in production mode also redeploy static content. |
+| *Enable AI Search* is greyed out | The first catalog sync has not finished - the toggle says how many products are sent; follow it on the Dashboard. |
+| "Quissly is not accepting catalog updates" | No active plan, credentials refused, or the server clock is off - the banner says which. Changed products stay queued. |
+| Dashboard shows an authentication error | The store's credentials no longer match its Quissly account (for example after copying the configuration to another store). Contact Quissly - connecting again is refused. |
+| Storefront unchanged | Caches: `bin/magento cache:clean`, and in production mode redeploy static content. Check with `?quissly_debug=1`. |
+| Products missing from results | Check they are enabled, visible in search, in stock and on this website; then the sync progress. |
+| An update is not arriving | `bin/magento quissly:update --status` and `var/log/quissly.log` say why (GitHub unreachable, files not writable). |
 
-## Security notes
-
-- The signing private key and API token are stored encrypted with Magento's built-in
-  encryption and are never written to logs or pages.
-- The public storefront endpoints (autocomplete etc.) never expose credentials - all
-  signing happens server-side.
-- The log file contains no personal data, no shopper queries, and no secrets.
-- **Who searched (for your privacy policy).** Each search tells Quissly who is searching,
-  as the Quissly Shopify app does: `customer:<id>` for a signed-in customer, otherwise
-  `guest:<random id>` from the `quissly_uid` cookie, plus the device type and operating
-  system (from the browser). No name, email or IP address is sent. With Magento's *Cookie
-  Restriction Mode* on (Stores → Configuration → General → Web → Default Cookie Settings),
-  a guest who has not allowed cookies gets no cookie and is sent as anonymous; searching
-  works the same either way.
+`var/log/quissly.log` holds status codes and counts only - never shopper searches or credentials -
+so it is safe to send to Quissly support.
 
 ## Support
 
-Contact Quissly support with: your Magento version, the module version, the dashboard's
-status/health readout, and the relevant lines from `var/log/quissly.log`.
+Contact Quissly with your Magento version, the module version, what the Dashboard shows and the
+relevant lines of `var/log/quissly.log`.
