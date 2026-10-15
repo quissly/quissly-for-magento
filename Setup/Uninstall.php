@@ -47,6 +47,7 @@ class Uninstall implements UninstallInterface
         'quissly_sync_pending_ops_w',
         'quissly_stock_reconcile_cursor_w',
         'quissly_onboarding',
+        'quissly_plan_w',
         'quissly_version_report',
         'quissly_update',
     ];

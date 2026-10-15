@@ -158,6 +158,18 @@ class OverlayConfig implements ArgumentInterface
     }
 
     /**
+     * Whether "Your recent searches" shows beside the buttons (default ON).
+     *
+     * The searches themselves stay in the shopper's browser.
+     *
+     * @return bool
+     */
+    public function showsRecentSearches(): bool
+    {
+        return $this->settings->isOverlayRecentEnabled($this->websiteId());
+    }
+
+    /**
      * The buttons themselves, as JSON: the merchant's own list (Manual), or what Quissly
      * generated for this store view's language (Automatic, the default - none until Quissly
      * has generated some). At most SearchSuggestions::MAX_CHIPS. Part of the cached page,

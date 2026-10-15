@@ -99,12 +99,17 @@ everything synced to the first, so it is refused; to move to another Quissly acc
 | **Shopping activity for Quissly analytics** | on | Sends product views, searches, adds to cart and wishlist, and paid orders to Quissly's analytics (see *Privacy*). |
 | **Search Examples** | generated | The example searches typed into the empty search bar, one list per store language, up to 20. Quissly writes them from your catalog after the first sync; edit, remove or reset them. |
 | **Search Suggestions** | on, Automatic | Buttons under the empty search bar. *Automatic* shows what Quissly generated; *Manual* shows your own, up to 10 per language. |
+| **Show recent searches** | on | The shopper's last 5 searches beside the suggestions, each with a bin to remove it. Kept only in the shopper's own browser, never sent anywhere. |
 | **Most Loved Products** | off | 8 product cards in the overlay, picked by you (plus 4 backups that step in when a pick is sold out or hidden). Click a field to browse your catalog, drag to reorder. |
 | **Catalog data** | brand, color, size, material... | Which product attributes are sent to Quissly (internal ones such as cost are never offered). Saving a change sends the whole catalog again. |
 | **Update check frequency** | 30 minutes | How often the module looks for a new version (5 minutes for testing, up to a day, or **Never**). |
 
 A switched-on feature that Quissly has not enabled for your account hides itself instead of sitting
 there dead - the Dashboard shows which half is missing. Normal search is never affected.
+
+A feature your plan does not include - the chat on a Search plan, or search on a Chat plan - is shown
+off and greyed out with a link to Billing, and stays off on the storefront until you add it. Your
+setting is kept for then.
 
 ## Updates
 
@@ -116,8 +121,12 @@ and `cache:flush`, in production mode also `setup:di:compile` and `setup:static-
 about a minute of maintenance page on a small store). If any step fails, the previous version is put
 back the same way. Settings, credentials and sync state live in the database and are kept.
 
+- **Quissly > Dashboard > Updates** shows the installed version, whether automatic updates are on,
+  the last check and the latest release, the last update - and, when one is not arriving, why. It also
+  says which Magento and PHP versions the module works with, and flags a store running anything else.
 - `bin/magento quissly:update` checks and installs now; `bin/magento quissly:update --status` shows
   what the last check found. Each update is written to `var/log/quissly.log`.
+- A server that GitHub's API limits (common on shared hosting) still finds new versions.
 - The module's files must be writable by the user cron runs as (Magento recommends cron runs as the
   files' owner).
 - Not updated automatically: a Composer install, and a store whose files are a git checkout -
@@ -195,7 +204,7 @@ bin/magento config:set quissly/connection/api_base_url "" && bin/magento cache:c
 | Dashboard shows an authentication error | The store's credentials no longer match its Quissly account (for example after copying the configuration to another store). Contact Quissly - connecting again is refused. |
 | Storefront unchanged | Caches: `bin/magento cache:clean`, and in production mode redeploy static content. Check with `?quissly_debug=1`. |
 | Products missing from results | Check they are enabled, visible in search, in stock and on this website; then the sync progress. |
-| An update is not arriving | `bin/magento quissly:update --status` and `var/log/quissly.log` say why (GitHub unreachable, files not writable). |
+| An update is not arriving | Quissly > Dashboard > Updates, `bin/magento quissly:update --status` and `var/log/quissly.log` say why (GitHub unreachable, files not writable). |
 
 `var/log/quissly.log` holds status codes and counts only - never shopper searches or credentials -
 so it is safe to send to Quissly support.

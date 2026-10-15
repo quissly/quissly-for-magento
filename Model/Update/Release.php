@@ -113,6 +113,9 @@ class Release
     /** How often a store checks, unless the merchant chose otherwise: every 30 minutes. */
     public const DEFAULT_EVERY = 1800;
 
+    /** The same update problem goes to the log again after this long. */
+    public const PROBLEM_EVERY = 86400;
+
     /** The frequencies offered: 5 minutes (for testing), 30 minutes (the default) to a day, never. */
     public const FREQUENCIES = [300, 1800, 3600, 21600, 43200, 86400, self::NEVER];
 
@@ -144,6 +147,59 @@ class Release
     {
         return version_compare($hinted, $installed, '>')
             && ($known === '' || version_compare($hinted, $known, '>'));
+    }
+
+    /**
+     * A release named by its version alone, at the addresses the release workflow publishes it to.
+     *
+     * For when GitHub's API refuses the server: `v<version>/` + the zip and its `.sig`.
+     *
+     * @param string $version
+     * @param string $asset the zip's file name
+     * @param string $packagePrefix the releases' download address
+     * @return array version, package, signature
+     */
+    public function forVersion(string $version, string $asset, string $packagePrefix): array
+    {
+        $package = $packagePrefix . 'v' . $version . '/' . $asset;
+        return ['version' => $version, 'package' => $package, 'signature' => $package . '.sig'];
+    }
+
+    /**
+     * Why a request to GitHub failed, '' when it did not.
+     *
+     * No answer at all, or a status other than 200 - GitHub answers 403/429 to an IP address
+     * past its limit (60 API requests an hour, shared by every site on a shared host).
+     *
+     * @param bool $answered
+     * @param int $status
+     * @param string $error the transport's message, when there was no answer
+     * @return string
+     */
+    public function requestError(bool $answered, int $status, string $error): string
+    {
+        if (!$answered) {
+            return 'no answer' . ($error !== '' ? ': ' . $error : '');
+        }
+        if ($status === 200) {
+            return '';
+        }
+        return in_array($status, [403, 429], true)
+            ? 'HTTP ' . $status . ", GitHub's limit for this server's IP address"
+            : 'HTTP ' . $status;
+    }
+
+    /**
+     * Whether an update problem goes to the log: a new one at once, the same one again after a day.
+     *
+     * @param array $last message, at - of the last one logged ([] = none)
+     * @param string $message
+     * @param int $now
+     * @return bool
+     */
+    public function problemDue(array $last, string $message, int $now): bool
+    {
+        return ($last['message'] ?? '') !== $message || $now - (int)($last['at'] ?? 0) >= self::PROBLEM_EVERY;
     }
 
     /**

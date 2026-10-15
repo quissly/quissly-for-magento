@@ -9,7 +9,9 @@ namespace Quissly\Search\Block\Adminhtml;
 
 use Magento\Backend\Block\Template;
 use Magento\Backend\Block\Template\Context;
+use Magento\Framework\App\ProductMetadataInterface;
 use Magento\Store\Model\StoreManagerInterface;
+use Quissly\Search\Model\Connect\PlanGate;
 use Quissly\Search\Model\Api\MediaSearchClient;
 use Quissly\Search\Model\Api\QuickClient;
 use Quissly\Search\Model\Api\ResponseClassifier;
@@ -19,6 +21,8 @@ use Quissly\Search\Model\Health\HealthRecorder;
 use Quissly\Search\Model\Health\MediaCapability;
 use Quissly\Search\Model\Sync\FirstSyncGate;
 use Quissly\Search\Model\Sync\SyncWorker;
+use Quissly\Search\Model\Update\Release;
+use Quissly\Search\Model\Update\Updater;
 
 /**
  * Per-website status for the Quissly dashboard.
@@ -35,6 +39,13 @@ class Dashboard extends Template
     public const STATUS_AFTER_SYNC = 'after_sync';
 
     /**
+     * What the module supports - keep in step with composer.json's require and the README.
+     * Tested on Magento 2.4.8 with PHP 8.3 (the dev store).
+     */
+    public const MIN_MAGENTO = '2.4.7';
+    public const PHP_VERSIONS = ['8.2', '8.3'];
+
+    /**
      * @param Context $context
      * @param Settings $settings
      * @param FirstSyncGate $gate
@@ -44,6 +55,9 @@ class Dashboard extends Template
      * @param ResponseClassifier $classifier
      * @param StoreManagerInterface $storeManager
      * @param ConnectHold $hold
+     * @param Updater $updater
+     * @param ProductMetadataInterface $productMetadata
+     * @param PlanGate $planGate
      * @param array $data
      */
     public function __construct(
@@ -56,6 +70,9 @@ class Dashboard extends Template
         private readonly ResponseClassifier $classifier,
         private readonly StoreManagerInterface $storeManager,
         private readonly ConnectHold $hold,
+        private readonly Updater $updater,
+        private readonly ProductMetadataInterface $productMetadata,
+        private readonly PlanGate $planGate,
         array $data = []
     ) {
         parent::__construct($context, $data);
@@ -247,14 +264,16 @@ class Dashboard extends Template
         );
         $quick = $this->assumeEnabledAfterSync($this->capability->status($websiteId, QuickClient::KIND), $gateOpen);
 
-        return [
+        return $this->notInPlan($websiteId, [
             [
+                'path' => 'quissly/features/enable_voice',
                 'label' => __('Voice search'),
                 'merchant' => $this->settings->isVoiceEnabled($websiteId),
                 'quissly' => $voice['status'],
                 'detail' => $this->statusDetail($voice),
             ],
             [
+                'path' => 'quissly/features/enable_image',
                 'label' => __('Image search'),
                 'merchant' => $this->settings->isImageEnabled($websiteId),
                 'quissly' => $image['status'],
@@ -266,6 +285,7 @@ class Dashboard extends Template
                 // service"). Recording it and then not showing it would leave a
                 // merchant with an empty dropdown and no way to learn why -
         // exactly the guessing the capability exists to prevent.
+                'path' => 'quissly/features/enable_quick',
                 'label' => __('Quick suggestions'),
                 'merchant' => $this->settings->isQuickEnabled($websiteId),
                 'quissly' => $quick['status'],
@@ -279,6 +299,7 @@ class Dashboard extends Template
                 // came back from Quissly's own service directory at Connect.
                 // "Not checked yet" next to "cannot verify" read as a
                 // contradiction (2026-09-10); say what is known instead.
+                'path' => 'quissly/features/enable_qchat',
                 'label' => __('Chat (QChat)'),
                 'merchant' => $this->settings->isQchatEnabled($websiteId) && $agentId !== null,
                 // Before the first sync the agent exists but nothing can use it
@@ -290,6 +311,7 @@ class Dashboard extends Template
                 'detail' => $this->chatDetail($websiteId, $agentId),
             ],
             [
+                'path' => 'quissly/features/enable_overlay',
                 'label' => __('Search overlay'),
                 'merchant' => $this->settings->isOverlayEnabled($websiteId),
                 'quissly' => MediaCapability::STATUS_OK,
@@ -305,7 +327,26 @@ class Dashboard extends Template
                     . 'for the Quissly Admin Panel analytics.'
                 ),
             ],
-        ];
+        ]);
+    }
+
+    /**
+     * A feature the website's plan leaves out says so (Model\Connect\PlanGate).
+     *
+     * @param int $websiteId
+     * @param array $rows
+     * @return array
+     */
+    private function notInPlan(int $websiteId, array $rows): array
+    {
+        $locked = $this->planGate->locked($websiteId);
+        foreach ($rows as &$row) {
+            if (isset($row['path'], $locked[$row['path']])) {
+                $row['detail'] = (string)__('Not in your plan - add it in Billing.');
+            }
+        }
+        unset($row);
+        return $rows;
     }
 
     /**
@@ -382,6 +423,106 @@ class Dashboard extends Template
             return (string)__('Quissly has not enabled this for your account (last checked %1).', $when);
         }
         return (string)__('Quissly could not serve this (%1, last checked %2).', $status['code'], $when);
+    }
+
+    /**
+     * The module's automatic updates, for the Updates section.
+     *
+     * What is installed, what the last check found, the last update, and why one is not arriving.
+     *
+     * @return array version, automatic, checked, latest, last, last_failed, problem, works_with,
+     *               this_store, supported
+     */
+    public function updates(): array
+    {
+        $state = $this->updater->status();
+        $every = $this->updater->interval();
+        $outcome = (string)($state['outcome'] ?? '');
+        if ($outcome === 'composer_install') {
+            $automatic = (string)__(
+                'Off: the module was installed with Composer - update it with composer update quissly/module-search.'
+            );
+        } elseif ($outcome === 'git_checkout') {
+            $automatic = (string)__(
+                'Off: the store\'s files are a git checkout - whoever deploys the store updates it.'
+            );
+        } elseif ($every === Release::NEVER) {
+            $automatic = (string)__(
+                'Off (Update check frequency: Never). bin/magento quissly:update installs a new version.'
+            );
+        } else {
+            $automatic = (string)__('On - checks every %1.', $this->duration($every));
+        }
+        $last = (array)($state['last'] ?? []);
+        $lastLine = '';
+        if (!empty($last['to'])) {
+            $lastLine = empty($last['error'])
+                ? (string)__('Updated from %1 to %2 on %3.', $last['from'], $last['to'], $this->when((int)$last['at']))
+                : (string)__(
+                    '%1 could not be installed on %2 (%3); %4 is still running.',
+                    $last['to'],
+                    $this->when((int)$last['at']),
+                    $last['error'],
+                    $last['from']
+                );
+        }
+        $problem = (array)($state['problem'] ?? []);
+        $magento = (string)$this->productMetadata->getVersion();
+        $php = PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION;
+        return [
+            'works_with' => (string)__(
+                'Magento %1 and newer, on PHP %2.',
+                self::MIN_MAGENTO,
+                implode(' or ', self::PHP_VERSIONS)
+            ),
+            'this_store' => (string)__('Magento %1, PHP %2', $magento, PHP_VERSION),
+            'supported' => version_compare($magento, self::MIN_MAGENTO, '>=')
+                && in_array($php, self::PHP_VERSIONS, true),
+            'version' => $this->updater->installedVersion(),
+            'automatic' => $automatic,
+            'checked' => $this->when(max((int)($state['checked_at'] ?? 0), (int)($state['hinted_at'] ?? 0))),
+            'latest' => (string)($state['latest'] ?? ''),
+            'last' => $lastLine,
+            'last_failed' => !empty($last['error']),
+            'problem' => empty($problem['message'])
+                ? ''
+                : (string)__('%1 Since %2.', $problem['message'], $this->when((int)$problem['at'])),
+        ];
+    }
+
+    /**
+     * A frequency in words.
+     *
+     * @param int $seconds
+     * @return string
+     */
+    private function duration(int $seconds): string
+    {
+        if ($seconds % 86400 === 0) {
+            return $seconds === 86400 ? (string)__('day') : (string)__('%1 days', $seconds / 86400);
+        }
+        if ($seconds % 3600 === 0) {
+            return $seconds === 3600 ? (string)__('hour') : (string)__('%1 hours', $seconds / 3600);
+        }
+        return (string)__('%1 minutes', intdiv($seconds, 60));
+    }
+
+    /**
+     * A time in the admin's own timezone, '' for none.
+     *
+     * @param int $at
+     * @return string
+     */
+    private function when(int $at): string
+    {
+        if ($at <= 0) {
+            return '';
+        }
+        return (string)$this->formatTime(
+            new \DateTime('@' . $at, new \DateTimeZone('UTC')),
+            \IntlDateFormatter::SHORT,
+            true
+        );
     }
 
     /**

@@ -90,6 +90,7 @@ class Billing extends Setup
         $websiteId = $this->onboarding->websiteId();
         $plans = $this->billing->plans($websiteId);
         $subscriptions = $this->billing->subscriptions($websiteId);
+        $this->planGate->remember((int)$websiteId, $subscriptions, time());
         if ($plans === null || $subscriptions === null) {
             return null;
         }

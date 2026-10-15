@@ -97,6 +97,7 @@
                 <field id="enable_overlay" translate="label comment" type="select" sortOrder="15"
                        showInDefault="1" showInWebsite="1" showInStore="0" canRestore="1">
                     <backend_model>Quissly\Search\Model\Config\Backend\StorefrontSetting</backend_model>
+                    <frontend_model>Quissly\Search\Block\Adminhtml\Config\PlanGatedToggle</frontend_model>
                     <label>Immersive Search Overlay</label>
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
                     <comment><![CDATA[When on, clicking the storefront search box opens a full-width search bar at the top of a blurred page, with Quick's suggestions under it when Quick is on. Purely a presentation change - results are unaffected. Leave off to keep your theme's native search box behaviour. <strong>If your theme has no search box at all</strong>, Quissly adds a search button whatever this is set to, since it is then the only way to search; see the mount point below to say where it goes.]]></comment>
@@ -208,6 +209,7 @@
                        showInDefault="1" showInWebsite="1" showInStore="0" canRestore="1">
                     <config_path>quissly/features/overlay_suggestions</config_path>
                     <backend_model>Quissly\Search\Model\Config\Backend\StorefrontSetting</backend_model>
+                    <frontend_model>Quissly\Search\Block\Adminhtml\Config\PlanGatedToggle</frontend_model>
                     <label>Show suggestion buttons</label>
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
                     <comment>On by default.</comment>
@@ -231,6 +233,17 @@
                         <field id="overlay_suggestions_mode">manual</field>
                     </depends>
                 </field>
+                <!-- "Your recent searches" beside the buttons: the shopper's own, kept in their
+                     browser (quissly-overlay.js). -->
+                <field id="overlay_recent" translate="label comment" type="select" sortOrder="40"
+                       showInDefault="1" showInWebsite="1" showInStore="0" canRestore="1">
+                    <config_path>quissly/features/overlay_recent</config_path>
+                    <backend_model>Quissly\Search\Model\Config\Backend\StorefrontSetting</backend_model>
+                    <frontend_model>Quissly\Search\Block\Adminhtml\Config\PlanGatedToggle</frontend_model>
+                    <label>Show recent searches</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>The shopper&apos;s last 5 searches under the empty search bar, kept only in their own browser and never sent anywhere. Off: none are shown or kept. On by default.</comment>
+                </field>
             </group>
             <!-- Most loved products (the Shopify app's): the merchant's picks, by SKU, shown in the
                  overlay under the suggestion buttons (Model/Search/MostLoved). -->
@@ -241,6 +254,7 @@
                 <field id="enabled" translate="label comment" type="select" sortOrder="10"
                        showInDefault="1" showInWebsite="1" showInStore="0" canRestore="1">
                     <backend_model>Quissly\Search\Model\Config\Backend\StorefrontSetting</backend_model>
+                    <frontend_model>Quissly\Search\Block\Adminhtml\Config\PlanGatedToggle</frontend_model>
                     <label>Most loved products</label>
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
                     <comment>Off by default.</comment>

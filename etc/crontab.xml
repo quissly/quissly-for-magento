@@ -8,6 +8,11 @@
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Cron:etc/crontab.xsd">
     <group id="quissly">
+        <!-- What each website's plan includes (Model/Connect/PlanGate), asked again
+             once Quissly's last answer is 10 minutes old. -->
+        <job name="quissly_plan" instance="Quissly\Search\Cron\PlanCron" method="execute">
+            <schedule>*/5 * * * *</schedule>
+        </job>
         <job name="quissly_sync_worker" instance="Quissly\Search\Cron\SyncCron" method="execute">
             <schedule>* * * * *</schedule>
         </job>

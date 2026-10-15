@@ -166,4 +166,8 @@
             <argument name="logger" xsi:type="object">Quissly\Search\Logger\Logger</argument>
         </arguments>
     </type>
+    <!-- A feature the website's plan leaves out is off whatever its switch says (Model/Connect/PlanGate). -->
+    <type name="Quissly\Search\Model\Config\Settings">
+        <plugin name="quissly_plan_lock" type="Quissly\Search\Plugin\Config\PlanLock"/>
+    </type>
 </config>

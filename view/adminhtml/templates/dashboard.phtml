@@ -252,6 +252,79 @@ $websites = $block->websites();
         </div>
     </section>
 <?php endforeach; ?>
+<?php
+// The module's automatic updates (Model/Update/Updater): the whole store, not a website.
+// Otherwise visible only in var/log/quissly.log or with bin/magento quissly:update --status.
+$updates = $block->updates();
+?>
+    <section class="admin__page-section">
+        <div class="admin__page-section-title">
+            <span class="title"><?= $escaper->escapeHtml(__('Updates')) ?></span>
+        </div>
+        <div class="admin__page-section-content">
+            <table class="admin__table-primary">
+                <tbody>
+                    <tr>
+                        <th><?= $escaper->escapeHtml(__('Installed version')) ?></th>
+                        <td><?= $escaper->escapeHtml($updates['version']) ?></td>
+                    </tr>
+                    <tr>
+                        <th><?= $escaper->escapeHtml(__('Works with')) ?></th>
+                        <td>
+                            <?= $escaper->escapeHtml($updates['works_with']) ?>
+                            <?php $thisStore = $updates['this_store']; ?>
+                            <?php $storeNote = $updates['supported']
+                                ? __('This store: %1.', $thisStore)
+                                : __('This store runs %1, which Quissly is not tested with.', $thisStore); ?>
+                            <?php $storeClass = $updates['supported'] ? '' : 'grid-severity-minor'; ?>
+                            <p class="note">
+                                <span class="<?= $escaper->escapeHtmlAttr($storeClass) ?>">
+                                    <span><?= $escaper->escapeHtml($storeNote) ?></span>
+                                </span>
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><?= $escaper->escapeHtml(__('Automatic updates')) ?></th>
+                        <td><?= $escaper->escapeHtml($updates['automatic']) ?></td>
+                    </tr>
+                    <?php if ($updates['checked'] !== ''): ?>
+                        <tr>
+                            <th><?= $escaper->escapeHtml(__('Last check')) ?></th>
+                            <td>
+                                <?= $escaper->escapeHtml($updates['checked']) ?>
+                                <?php if ($updates['latest'] !== ''): ?>
+                                    <?php $latestNote = __('Latest release: %1', $updates['latest']); ?>
+                                    <p class="note"><span><?= $escaper->escapeHtml($latestNote) ?></span></p>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                    <?php endif; ?>
+                    <?php if ($updates['last'] !== ''): ?>
+                        <tr>
+                            <th><?= $escaper->escapeHtml(__('Last update')) ?></th>
+                            <td>
+                                <?php $lastSeverity = $updates['last_failed'] ? 'major' : 'notice'; ?>
+                                <span class="grid-severity-<?= $escaper->escapeHtmlAttr($lastSeverity) ?>">
+                                    <span><?= $escaper->escapeHtml($updates['last']) ?></span>
+                                </span>
+                            </td>
+                        </tr>
+                    <?php endif; ?>
+                    <?php if ($updates['problem'] !== ''): ?>
+                        <tr>
+                            <th><?= $escaper->escapeHtml(__('Why no update is arriving')) ?></th>
+                            <td>
+                                <span class="grid-severity-minor">
+                                    <span><?= $escaper->escapeHtml($updates['problem']) ?></span>
+                                </span>
+                            </td>
+                        </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </section>
 </div>
 
 <?php

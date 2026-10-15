@@ -10,8 +10,9 @@ namespace Quissly\Search\Block\Adminhtml\Config;
 use Magento\Backend\Block\Template\Context;
 use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Store\Model\ScopeInterface;
-use Magento\Config\Block\System\Config\Form\Field;
 use Magento\Framework\Data\Form\Element\AbstractElement;
+use Quissly\Search\Model\Api\StoreBilling;
+use Quissly\Search\Model\Connect\PlanGate;
 use Quissly\Search\Model\Sync\SyncCompletion;
 
 /**
@@ -24,22 +25,29 @@ use Quissly\Search\Model\Sync\SyncCompletion;
  * Disabled ONLY while the feature is off. A feature already running keeps a
  * working control, because the merchant must always be able to switch it off,
  * and because disabling it would stop the value being submitted at all.
+ *
+ * A feature the website's plan leaves out is disabled first, whatever the sync
+ * (PlanGatedToggle): it cannot work, on or off.
  */
-class SyncGatedToggle extends Field
+class SyncGatedToggle extends PlanGatedToggle
 {
     /**
      * @param Context $context
      * @param SyncCompletion $completion
      * @param ScopeConfigInterface $scopeConfig
+     * @param PlanGate $planGate
+     * @param StoreBilling $billing
      * @param array $data
      */
     public function __construct(
         Context $context,
         private readonly SyncCompletion $completion,
         private readonly ScopeConfigInterface $scopeConfig,
+        PlanGate $planGate,
+        StoreBilling $billing,
         array $data = []
     ) {
-        parent::__construct($context, $data);
+        parent::__construct($context, $planGate, $billing, $data);
     }
 
     /**
@@ -47,6 +55,10 @@ class SyncGatedToggle extends Field
      */
     protected function _getElementHtml(AbstractElement $element)
     {
+        $locked = $this->planLockedHtml($element);
+        if ($locked !== null) {
+            return $locked;
+        }
         $websiteId = $this->resolvedWebsiteId();
 
         if ($this->completion->isComplete($websiteId)) {
@@ -84,28 +96,6 @@ class SyncGatedToggle extends Field
     }
 
     /**
-     * The website whose gate answers for the scope being edited.
-     *
-     * Default scope is not a website, and website 0 has no gate - checking it
-     * would disable the control forever on every store.
-     *
-     * @return int
-     */
-    private function resolvedWebsiteId(): int
-    {
-        $scoped = (int)$this->getRequest()->getParam('website', 0);
-        if ($scoped > 0) {
-            return $scoped;
-        }
-
-        try {
-            return (int)$this->_storeManager->getDefaultStoreView()->getWebsiteId();
-        } catch (\Throwable $e) {
-            return 0;
-        }
-    }
-
-    /**
      * Whether the feature is already switched on for this scope.
      *
      * Read from config, not from the element. The element's value is not the
@@ -131,30 +121,6 @@ class SyncGatedToggle extends Field
             $websiteId > 0 ? ScopeInterface::SCOPE_WEBSITE : ScopeConfigInterface::SCOPE_TYPE_DEFAULT,
             $websiteId > 0 ? $websiteId : null
         );
-    }
-
-    /**
-     * The config path this element edits.
-     *
-     * Config form elements carry no `path` of their own; the field NAME
-     * encodes group and field, and the section is on the request.
-     * Reconstructing it that way is deterministic, where deriving it from
-     * html_id is not - field ids contain underscores, so section_group_field
-     * cannot be split reliably.
-     *
-     * @param AbstractElement $element
-     * @return string|null
-     */
-    private function configPath(AbstractElement $element): ?string
-    {
-        $section = (string)$this->getRequest()->getParam('section');
-        $name = (string)$element->getData('name');
-
-        if ($section === '' || !preg_match('/groups\[([^\]]+)\]\[fields\]\[([^\]]+)\]/', $name, $m)) {
-            return null;
-        }
-
-        return $section . '/' . $m[1] . '/' . $m[2];
     }
 
     /**

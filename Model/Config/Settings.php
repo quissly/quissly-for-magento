@@ -71,6 +71,7 @@ class Settings
     private const PATH_OVERLAY_SUGGESTIONS = 'quissly/features/overlay_suggestions';
     private const PATH_OVERLAY_SUGGESTIONS_MODE = 'quissly/features/overlay_suggestions_mode';
     private const PATH_OVERLAY_SUGGESTIONS_MANUAL = 'quissly/features/overlay_suggestions_manual';
+    private const PATH_OVERLAY_RECENT = 'quissly/features/overlay_recent';
     private const PATH_MOST_LOVED = 'quissly/most_loved/enabled';
     private const PATH_MOST_LOVED_SHOWN = 'quissly/most_loved/shown';
     private const PATH_MOST_LOVED_BACKUPS = 'quissly/most_loved/backups';
@@ -458,6 +459,21 @@ class Settings
     {
         return (bool)$this->scopeConfig->isSetFlag(
             self::PATH_OVERLAY_SUGGESTIONS,
+            ScopeInterface::SCOPE_WEBSITE,
+            $this->resolveWebsiteId($websiteId)
+        );
+    }
+
+    /**
+     * Whether the overlay shows the shopper's recent searches beside the buttons (default ON).
+     *
+     * @param int|null $websiteId
+     * @return bool
+     */
+    public function isOverlayRecentEnabled(?int $websiteId = null): bool
+    {
+        return (bool)$this->scopeConfig->isSetFlag(
+            self::PATH_OVERLAY_RECENT,
             ScopeInterface::SCOPE_WEBSITE,
             $this->resolveWebsiteId($websiteId)
         );

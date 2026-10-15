@@ -16,6 +16,7 @@ use Magento\Store\Model\StoreManagerInterface;
 use Quissly\Search\Model\Api\StoreBilling;
 use Quissly\Search\Model\Config\Settings;
 use Quissly\Search\Model\Connect\Onboarding;
+use Quissly\Search\Model\Connect\PlanGate;
 use Quissly\Search\Model\Connect\SetupInput;
 use Quissly\Search\Model\Connect\StoreFacts;
 
@@ -43,6 +44,7 @@ class Setup extends Template
      * @param Json $json
      * @param StoreFacts $storeFacts
      * @param SetupInput $input
+     * @param PlanGate $planGate
      * @param array $data
      */
     public function __construct(
@@ -55,6 +57,7 @@ class Setup extends Template
         protected readonly Json $json,
         private readonly StoreFacts $storeFacts,
         private readonly SetupInput $input,
+        protected readonly PlanGate $planGate,
         array $data = []
     ) {
         parent::__construct($context, $data);
@@ -297,6 +300,7 @@ class Setup extends Template
             return null;
         }
         $subscriptions = $this->billing->subscriptions($websiteId);
+        $this->planGate->remember((int)$websiteId, $subscriptions, time());
         $trialEligible = is_array($subscriptions['trial_eligible'] ?? null) ? $subscriptions['trial_eligible'] : [];
         $live = $subscriptions === null ? [] : $this->billing->livePlans($subscriptions);
         $currency = (string)($plans['currency'] ?? 'USD');

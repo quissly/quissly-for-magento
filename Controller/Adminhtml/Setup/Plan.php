@@ -13,6 +13,7 @@ use Magento\Framework\Controller\Result\Json;
 use Magento\Framework\Controller\Result\JsonFactory;
 use Quissly\Search\Model\Api\StoreBilling;
 use Quissly\Search\Model\Connect\Onboarding;
+use Quissly\Search\Model\Connect\PlanGate;
 
 /**
  * The plan step, against Quissly's store billing API.
@@ -37,12 +38,14 @@ class Plan extends Action implements HttpPostActionInterface
      * @param Onboarding $onboarding
      * @param StoreBilling $billing
      * @param JsonFactory $jsonFactory
+     * @param PlanGate $planGate
      */
     public function __construct(
         Action\Context $context,
         private readonly Onboarding $onboarding,
         private readonly StoreBilling $billing,
-        private readonly JsonFactory $jsonFactory
+        private readonly JsonFactory $jsonFactory,
+        private readonly PlanGate $planGate
     ) {
         parent::__construct($context);
     }
@@ -88,6 +91,7 @@ class Plan extends Action implements HttpPostActionInterface
             case 'check':
             case 'keep':
                 $subscriptions = $this->billing->subscriptions($websiteId);
+                $this->planGate->remember((int)$websiteId, $subscriptions, time());
                 if ($subscriptions === null) {
                     return $result->setData(['ok' => false, 'message' => $this->billing->message(0, '')]);
                 }

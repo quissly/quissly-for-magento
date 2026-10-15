@@ -29,7 +29,10 @@ use Symfony\Component\Process\Process;
  * testing, 30 minutes by default, up to a day, or Never) the module reads the version in the
  * repository's composer.json on GitHub's CDN (raw.githubusercontent.com - no API rate limit),
  * and asks GitHub for the latest release when that names a newer version than the one
- * installed and known - and at least once a day. Cron/UpdateCron ticks every 5 minutes;
+ * installed and known - and at least once a day. When the API refuses the server (60 requests
+ * an hour per IP address, shared by every site on a shared host), the release is found at the
+ * address the release workflow publishes it to, from the CDN's version. Cron/UpdateCron ticks
+ * every 5 minutes;
  * `bin/magento quissly:update` checks and installs at once, Never included. A newer release is
  * installed straight away:
  *
@@ -50,6 +53,10 @@ use Symfony\Component\Process\Process;
  * A module installed with Composer (under vendor/) is never written to: Composer owns it,
  * and `composer update quissly/module-search` updates it (the releases are tagged). Nor is a
  * store whose files are a git checkout: whoever deploys it updates it.
+ *
+ * What the last check found - the outcome, and why an update is not arriving - is kept with
+ * the state (status()) for Quissly > Dashboard; a problem also goes to quissly.log, the same
+ * one once a day.
  */
 class Updater
 {
@@ -69,6 +76,13 @@ class Updater
     private const STEP_TIMEOUT = 3600;
 
     private const LOCK = 'quissly_update';
+
+    /**
+     * Why the last GitHub request failed ('' = it did not).
+     *
+     * @var string
+     */
+    private string $githubError = '';
 
     /**
      * @param CurlFactory $curlFactory
@@ -132,10 +146,19 @@ class Updater
 
             // The cheap check first: GitHub's CDN copy of composer.json. Only news (or a day
             // since the last full check) asks GitHub's API for the release.
+            $hinted = null;
             if (!$force && $now - (int)($state['checked_at'] ?? 0) < self::CHECK_EVERY) {
                 $hinted = $this->hintedVersion();
+                if ($hinted === null) {
+                    $message = sprintf('Quissly could not check GitHub for a new version (%s).', $this->githubError);
+                    $this->problem($state, $message, $now);
+                    $state['next_at'] = $now + $every;
+                    $this->flags->saveFlag(self::FLAG, $state);
+                    return 'check_failed';
+                }
                 $known = (string)($state['latest'] ?? '');
-                if ($hinted === null || !$this->release->isNews($hinted, $this->installedVersion(), $known)) {
+                if (!$this->release->isNews($hinted, $this->installedVersion(), $known)) {
+                    unset($state['problem']);
                     $state['next_at'] = $now + $every;
                     $state['hinted_at'] = $now;
                     $this->flags->saveFlag(self::FLAG, $state);
@@ -143,14 +166,24 @@ class Updater
                 }
             }
 
-            $release = $this->latest();
+            $release = $this->latest($hinted);
             if ($release === null) {
+                if ($this->githubError !== '') {
+                    $message = sprintf(
+                        'Quissly could not get the latest release from GitHub (%s).',
+                        $this->githubError
+                    );
+                    $this->problem($state, $message, $now);
+                    $this->flags->saveFlag(self::FLAG, $state);
+                }
                 return 'check_failed'; // tried again soon
             }
+            unset($state['problem']);
             $state['next_at'] = $now + $every;
             $state['checked_at'] = $now;
             $state['latest'] = $release['version'];
             $result = $this->consider($release, $state, $now, $force);
+            $state['outcome'] = $result;
             $this->flags->saveFlag(self::FLAG, $state);
             return $result;
         } finally {
@@ -173,7 +206,7 @@ class Updater
      *
      * @return string
      */
-    private function installedVersion(): string
+    public function installedVersion(): string
     {
         $moduleDir = rtrim((string)$this->components->getPath(ComponentRegistrar::MODULE, 'Quissly_Search'), '/');
         return (string)$this->release->versionIn($this->read($moduleDir . '/composer.json'));
@@ -190,7 +223,33 @@ class Updater
     {
         $override = (string)$this->deploymentConfig->get('quissly/update_hint_url');
         $body = $this->fetch($override !== '' ? $override : self::HINT_URL);
-        return $body === null ? null : $this->release->versionIn($body);
+        if ($body === null) {
+            return null; // fetch() said why
+        }
+        $version = $this->release->versionIn($body);
+        if ($version === null) {
+            $this->githubError = 'no version in its composer.json';
+        }
+        return $version;
+    }
+
+    /**
+     * Note why an update is not arriving: kept for the Dashboard, logged once a day.
+     *
+     * @param array $state updated in place
+     * @param string $message
+     * @param int $now
+     * @return void
+     */
+    private function problem(array &$state, string $message, int $now): void
+    {
+        $last = (array)($state['problem'] ?? []);
+        $logged = ['message' => (string)($last['message'] ?? ''), 'at' => (int)($last['logged_at'] ?? 0)];
+        $state['problem'] = ['message' => $message, 'at' => $now, 'logged_at' => $logged['at']];
+        if ($this->release->problemDue($logged, $message, $now)) {
+            $this->logger->warning($message);
+            $state['problem']['logged_at'] = $now;
+        }
     }
 
     /**
@@ -250,9 +309,13 @@ class Updater
     /**
      * The latest release from GitHub.
      *
+     * From GitHub's API; when the API refuses the server, the release of the CDN's version at
+     * its known addresses, once published (the workflow takes a minute or two after the push).
+     *
+     * @param string|null $hinted the CDN's version, when this check read it already
      * @return array|null version, package, signature
      */
-    private function latest(): ?array
+    private function latest(?string $hinted): ?array
     {
         $curl = $this->curlFactory->create();
         $curl->setTimeout(15);
@@ -260,13 +323,27 @@ class Updater
         $curl->addHeader('User-Agent', 'quissly-for-magento');
         try {
             $curl->get($this->releaseUrl());
+            $this->githubError = $this->release->requestError(true, (int)$curl->getStatus(), '');
         } catch (\Throwable $e) {
+            $this->githubError = $this->release->requestError(false, 0, $e->getMessage());
+        }
+        if ($this->githubError === '') {
+            $json = json_decode((string)$curl->getBody(), true);
+            return $this->release->parse($json, self::ASSET, $this->packagePrefix());
+        }
+        if ((string)$this->deploymentConfig->get('quissly/update_url') !== '') {
             return null;
         }
-        if ((int)$curl->getStatus() !== 200) {
+        $apiError = $this->githubError;
+        $hinted = $hinted ?? $this->hintedVersion();
+        $this->githubError = $apiError;
+        if ($hinted === null) {
             return null;
         }
-        return $this->release->parse(json_decode((string)$curl->getBody(), true), self::ASSET, $this->packagePrefix());
+        $release = $this->release->forVersion($hinted, self::ASSET, $this->packagePrefix());
+        $published = $this->fetch($release['signature']) !== null;
+        $this->githubError = $apiError; // the API's refusal is the reason, not a release still being built
+        return $published ? $release : null;
     }
 
     /**
@@ -403,10 +480,11 @@ class Updater
         $curl->addHeader('User-Agent', 'quissly-for-magento');
         try {
             $curl->get($url);
+            $this->githubError = $this->release->requestError(true, (int)$curl->getStatus(), '');
         } catch (\Throwable $e) {
-            return null;
+            $this->githubError = $this->release->requestError(false, 0, $e->getMessage());
         }
-        return (int)$curl->getStatus() === 200 ? (string)$curl->getBody() : null;
+        return $this->githubError === '' ? (string)$curl->getBody() : null;
     }
 
     /**
