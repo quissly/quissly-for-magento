@@ -102,6 +102,13 @@
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
                     <comment><![CDATA[When on, clicking the storefront search box opens a full-width search bar at the top of a blurred page, with Quick's suggestions under it when Quick is on. Purely a presentation change - results are unaffected. Leave off to keep your theme's native search box behaviour. <strong>If your theme has no search box at all</strong>, Quissly adds a search button whatever this is set to, since it is then the only way to search; see the mount point below to say where it goes.]]></comment>
                 </field>
+                <field id="overlay_layout" translate="label comment" type="select" sortOrder="17"
+                       showInDefault="1" showInWebsite="1" showInStore="0" canRestore="1">
+                    <backend_model>Quissly\Search\Model\Config\Backend\StorefrontSetting</backend_model>
+                    <label>Search overlay layout</label>
+                    <source_model>Quissly\Search\Model\Config\Source\OverlayLayout</source_model>
+                    <comment>Wide spans the screen and shows products in columns. Center is a compact panel in the middle of the screen. Phones look the same either way.</comment>
+                </field>
                 <field id="overlay_mount_selector" translate="label comment" type="text" sortOrder="19"
                        showInDefault="1" showInWebsite="1" showInStore="0" canRestore="1">
                     <backend_model>Quissly\Search\Model\Config\Backend\StorefrontSetting</backend_model>

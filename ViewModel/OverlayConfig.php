@@ -148,6 +148,16 @@ class OverlayConfig implements ArgumentInterface
     }
 
     /**
+     * The overlay's layout: 'wide' (the default) spans the screen, 'center' is a 760px panel.
+     *
+     * @return string
+     */
+    public function layout(): string
+    {
+        return $this->settings->overlayLayout($this->websiteId());
+    }
+
+    /**
      * Whether the suggestions show under the bar as buttons (default ON).
      *
      * @return bool

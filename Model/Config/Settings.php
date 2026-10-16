@@ -12,6 +12,7 @@ use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\Encryption\EncryptorInterface;
 use Magento\Store\Model\ScopeInterface;
 use Quissly\Search\Model\Cart\ChatIds;
+use Quissly\Search\Model\Config\Source\OverlayLayout;
 use Quissly\Search\Model\Config\Source\QuickStyle;
 use Quissly\Search\Model\Config\Source\SuggestionsMode;
 use Magento\Store\Model\StoreManagerInterface;
@@ -68,6 +69,7 @@ class Settings
     private const PATH_ENABLE_QCHAT = 'quissly/features/enable_qchat';
     private const PATH_QCHAT_AGENT_ID = 'quissly/features/qchat_agent_id';
     private const PATH_ENABLE_OVERLAY = 'quissly/features/enable_overlay';
+    private const PATH_OVERLAY_LAYOUT = 'quissly/features/overlay_layout';
     private const PATH_OVERLAY_SUGGESTIONS = 'quissly/features/overlay_suggestions';
     private const PATH_OVERLAY_SUGGESTIONS_MODE = 'quissly/features/overlay_suggestions_mode';
     private const PATH_OVERLAY_SUGGESTIONS_MANUAL = 'quissly/features/overlay_suggestions_manual';
@@ -612,6 +614,25 @@ class Settings
             ScopeInterface::SCOPE_WEBSITE,
             $this->resolveWebsiteId($websiteId)
         );
+    }
+
+    /**
+     * The search overlay's layout: wide (the default) or center.
+     *
+     * An unrecognised stored value falls back to wide.
+     *
+     * @param int|null $websiteId
+     * @return string OverlayLayout::WIDE|OverlayLayout::CENTER
+     */
+    public function overlayLayout(?int $websiteId = null): string
+    {
+        $value = (string)$this->scopeConfig->getValue(
+            self::PATH_OVERLAY_LAYOUT,
+            ScopeInterface::SCOPE_WEBSITE,
+            $this->resolveWebsiteId($websiteId)
+        );
+
+        return $value === OverlayLayout::CENTER ? OverlayLayout::CENTER : OverlayLayout::WIDE;
     }
 
     /**

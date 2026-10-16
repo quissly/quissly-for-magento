@@ -24,6 +24,7 @@
                      what the opt-in rule exists to prevent. -->
                 <enable_search>0</enable_search>
                 <enable_overlay>1</enable_overlay>
+                <overlay_layout>wide</overlay_layout>
                 <overlay_suggestions>1</overlay_suggestions>
                 <overlay_recent>1</overlay_recent>
                 <overlay_suggestions_mode>automatic</overlay_suggestions_mode>
