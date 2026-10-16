@@ -191,13 +191,19 @@ class SearchSuggestionsField extends Field
         foreach (array_values(array_unique($codes)) as $i => $code) {
             $language = $i === 0 ? null : $code;
             $finished = $websiteId === null || $this->showcase->finished($websiteId, $language);
+            $own = $i === 0 ? $current['queries'] : ($current['by_language'][$code] ?? []);
+            $generated = $this->generatedList($current, $websiteId, $language);
+            // An empty list shows what the storefront types instead (SearchSuggestions::forStorefront()):
+            // another language without a list of its own uses the main list while that has entries,
+            // else the generated one. Saving then writes it to Quissly as the list.
+            $shown = $own === [] && ($i === 0 || $current['queries'] === []) ? $generated : $own;
             $models[] = [
                 'code' => $code,
                 'label' => $i === 0
                     ? (string)__('%1 (default)', $this->languages->name($code))
                     : $this->languages->name($code),
-                'queries' => $i === 0 ? $current['queries'] : ($current['by_language'][$code] ?? []),
-                'generated' => $this->generatedList($current, $websiteId, $language),
+                'queries' => $shown,
+                'generated' => $generated,
                 'note' => $finished ? '' : (string)__(
                     'Left empty, suggestions are generated from your catalog after the first catalog sync '
                     . '- each one checked to find products.'

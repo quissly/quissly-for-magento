@@ -326,7 +326,12 @@ class SearchSuggestions
         if (!$lists['enabled']) {
             return [];
         }
-        return $this->languages->pick($lists, $language, $this->languages->websiteLanguage($websiteId));
+        // An empty list is nothing chosen yet, not "show nothing" (the switch hides the typing):
+        // Quissly's generated list until the merchant's own has entries. A list saved empty before
+        // anything was generated kept the typing off until "Reset to generated".
+        $primary = $this->languages->websiteLanguage($websiteId);
+        $picked = $this->languages->pick($lists, $language, $primary);
+        return $picked !== [] ? $picked : $this->pickGenerated($lists['generated'], $language, $primary);
     }
 
     /**
