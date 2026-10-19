@@ -90,6 +90,8 @@ class Setup extends Template
             'csrf' => ['form_key' => $this->getFormKey()],
             'endpoints' => [
                 'connect' => ['url' => $this->getUrl('quissly/connect/index'), 'params' => (object)[]],
+                // The email code step 1 asks Quissly for: the same controller, step=send_code.
+                'send_code' => ['url' => $this->getUrl('quissly/connect/index'), 'params' => ['step' => 'send_code']],
                 'plan' => ['url' => $this->getUrl('quissly/setup/plan'), 'params' => (object)[]],
                 'status' => ['url' => $this->getUrl('quissly/setup/status'), 'params' => (object)[]],
                 'finish' => ['url' => $this->getUrl('quissly/setup/finish'), 'params' => (object)[]],
@@ -123,7 +125,18 @@ class Setup extends Template
                     'nameMissing' => (string)__('Add your store name to continue.'),
                     'nameInvalid' => (string)__('Fix the store name to continue.'),
                     'sellMissing' => (string)__('Add what you sell to continue.'),
+                    'codeNotSent' => (string)__('Confirm the email with a code to continue.'),
+                    'codeMissing' => (string)__('Enter the 6-digit code from your email to continue.'),
                     'none' => (string)__('Nothing is charged yet.'),
+                ],
+                // The emailed code under the email field ([email] is the address).
+                'verify' => [
+                    'intro' => (string)__('We\'ll email a 6-digit code to [email] to confirm it\'s yours.'),
+                    'sent' => (string)__('We sent a 6-digit code to [email]. It expires in 10 minutes.'),
+                    'label' => (string)__('Verification code'),
+                    'send' => (string)__('Send code'),
+                    'resend' => (string)__('Send a new code'),
+                    'sending' => (string)__('Sending…'),
                 ],
                 'chipWorking' => (string)__('Setting up...'),
                 'chipReady' => (string)__('Ready'),

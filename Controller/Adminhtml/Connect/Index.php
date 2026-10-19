@@ -122,6 +122,25 @@ class Index extends Action implements HttpPostActionInterface
                 'message' => (string)($messages[$problem] ?? __('Enter a valid email address, like name@example.com.')),
             ]);
         }
+        // Quissly Setup's email code (setup.js posts here with step=send_code): Quissly mails a code to
+        // the email the account will be created with, for this website's storefront host.
+        if ($this->getRequest()->getParam('step') === 'send_code') {
+            try {
+                $baseUrl = (string)$this->resolveStore($websiteId)->getBaseUrl();
+                $host = (string)UriFactory::factory($baseUrl)->getHost();
+            } catch (NoSuchEntityException $e) {
+                $host = '';
+            }
+            if ($host === '') {
+                return $result->setData([
+                    'ok' => false,
+                    'message' => (string)__('Set this website\'s base URL before connecting.'),
+                ]);
+            }
+            $sent = $this->provisioner->sendCode($host, $email, $websiteId);
+
+            return $result->setData(['ok' => $sent['ok'], 'message' => $sent['ok'] ? '' : $sent['error']]);
+        }
         // Quissly Setup asks for both (the Shopify app's rule); Configuration's Connect sends neither.
         $description = $this->getRequest()->getParam('description');
         if ($description !== null && (trim((string)$this->getRequest()->getParam('store_name')) === ''
@@ -142,6 +161,15 @@ class Index extends Action implements HttpPostActionInterface
             return $result->setData([
                 'ok' => false,
                 'message' => (string)__('Description must be 500 characters or fewer.'),
+            ]);
+        }
+        // Quissly Setup sends the six digits Quissly mailed to the email (step=send_code, above); its
+        // sign-up refuses without them. Configuration's Connect sends none, and Quissly refuses it.
+        $code = trim((string)$this->getRequest()->getParam('verification_code'));
+        if ($description !== null && preg_match('/^\d{6}$/', $code) !== 1) {
+            return $result->setData([
+                'ok' => false,
+                'message' => (string)__('Enter the 6-digit code we emailed you.'),
             ]);
         }
 
@@ -200,7 +228,8 @@ class Index extends Action implements HttpPostActionInterface
             $this->adminName('last'),
             // The description on Quissly Setup (drafted from the store, edited by the
             // merchant); Configuration's Connect sends none.
-            trim((string)$this->getRequest()->getParam('description')) ?: null
+            trim((string)$this->getRequest()->getParam('description')) ?: null,
+            $code !== '' ? $code : null
         );
 
         if (!$response['ok']) {

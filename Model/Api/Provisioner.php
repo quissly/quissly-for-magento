@@ -25,10 +25,19 @@ use Quissly\Search\Model\Config\Settings;
  * Creating an account is NOT idempotent: calling it twice makes a second tenant
  * and strands the first along with everything already synced to it. The caller
  * must refuse when credentials already exist.
+ *
+ * Since 2026-10-19 the sign-up takes the email only with a code Quissly mailed there: Quissly Setup
+ * first asks for one (sendCode(): POST .../open-source/send-code {email, domain}), the merchant types
+ * it, and provision() sends it as `verification_code`. Six digits, ten minutes, five tries, a minute
+ * before a resend - Quissly's rules and words, passed through.
  */
 class Provisioner
 {
     private const PATH = '/api/v1/services/external/open-source';
+    private const SEND_CODE_PATH = '/api/v1/services/external/open-source/send-code';
+
+    /** Mailing a code is quick upstream; the merchant waits on this one. */
+    private const SEND_CODE_TIMEOUT_SECONDS = 30;
 
     /**
      * Account creation does real work upstream; a shopper budget is meaningless
@@ -65,6 +74,7 @@ class Provisioner
      * @param string|null $lastName Admin's last name, for the account record
      * @param string|null $description What the store is, typed or kept on Quissly Setup; null
      *                                 sends the module's own one-line description
+     * @param string|null $verificationCode The code Quissly mailed to $email (sendCode())
      * @return array Shape: {ok: bool, api_key: string, project_id: string,
      *                        store_id: string, error: string}
      */
@@ -76,7 +86,8 @@ class Provisioner
         ?int $websiteId = null,
         ?string $firstName = null,
         ?string $lastName = null,
-        ?string $description = null
+        ?string $description = null,
+        ?string $verificationCode = null
     ): array {
         $curl = $this->curlFactory->create();
         $curl->setTimeout(self::TIMEOUT_SECONDS);
@@ -107,6 +118,10 @@ class Provisioner
             if (($payload[$optional] ?? null) === null || $payload[$optional] === '') {
                 unset($payload[$optional]);
             }
+        }
+        // The sign-up refuses without the code Quissly mailed to the email.
+        if ($verificationCode !== null && trim($verificationCode) !== '') {
+            $payload['verification_code'] = trim($verificationCode);
         }
         $body = json_encode($payload, JSON_UNESCAPED_SLASHES) ?: '{}';
 
@@ -169,6 +184,43 @@ class Provisioner
      * @param string $error
      * @return array
      */
+    /**
+     * Ask Quissly to mail a sign-up code to $email for this storefront's domain.
+     *
+     * @param string $domain Storefront host, the one provision() will send
+     * @param string $email The address the account will be created with
+     * @param int|null $websiteId
+     * @return array Shape: {ok: bool, error: string} - error in Quissly's own words when it gave some
+     */
+    public function sendCode(string $domain, string $email, ?int $websiteId = null): array
+    {
+        $curl = $this->curlFactory->create();
+        $curl->setTimeout(self::SEND_CODE_TIMEOUT_SECONDS);
+        $curl->addHeader('Content-Type', 'application/json');
+        $body = json_encode(['email' => trim($email), 'domain' => $domain], JSON_UNESCAPED_SLASHES) ?: '{}';
+
+        try {
+            $curl->post($this->settings->consoleUrl($websiteId) . self::SEND_CODE_PATH, $body);
+        } catch (\Throwable $e) {
+            $this->logger->error('[quissly] sign-up code transport failure: ' . $e->getMessage());
+            return ['ok' => false, 'error' => (string)__('Could not reach Quissly. Try again in a minute.')];
+        }
+
+        $status = (int)$curl->getStatus();
+        if ($status >= 200 && $status < 300) {
+            return ['ok' => true, 'error' => ''];
+        }
+        $decoded = json_decode((string)$curl->getBody(), true);
+        // Quissly's own words ("Please wait a minute before requesting another code.") are what help.
+        $detail = is_array($decoded) && is_string($decoded['detail'] ?? null) ? trim($decoded['detail']) : '';
+        $this->logger->info(sprintf('[quissly] sign-up code http=%d %s', $status, $detail));
+
+        return [
+            'ok' => false,
+            'error' => $detail !== '' ? $detail : (string)__('Quissly could not send the code (HTTP %1).', $status),
+        ];
+    }
+
     private function failure(string $error): array
     {
         return [
