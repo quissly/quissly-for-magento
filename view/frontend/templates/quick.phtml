@@ -24,6 +24,7 @@ if (!$config instanceof \Quissly\Search\ViewModel\QuickConfig || !$config->shoul
      data-style="<?= $escaper->escapeHtmlAttr($config->style()) ?>"
      data-label-all="<?= $escaper->escapeHtmlAttr(__('See all')) ?>"
      data-label-details="<?= $escaper->escapeHtmlAttr(__('Details')) ?>"
+     data-label-searching="<?= $escaper->escapeHtmlAttr(__('Searching…')) ?>"
      hidden></div>
 <style>
     .quissly-quick {
@@ -38,12 +39,14 @@ if (!$config instanceof \Quissly\Search\ViewModel\QuickConfig || !$config->shoul
         font-family: inherit; color: #1a1a1a;
     }
     .quissly-quick[hidden] { display: none !important; }
-    /* Inside the search overlay: a full-width card under the bar, laid out by
-       the overlay (quissly-overlay.js) instead of measured and floated. */
+    /* Inside the search overlay: part of the overlay's panel under the bar - no
+       card of its own (its corners and shadow showed as a second card stacked on
+       the panel) - laid out by the overlay (quissly-overlay.js) instead of
+       measured and floated. */
     .quissly-quick.quissly-quick--in-overlay {
         position: static; z-index: auto;
-        padding: 22px 14px 16px; border-radius: 28px;
-        box-shadow: 0 20px 55px rgba(0, 0, 0, .3), 0 2px 8px rgba(0, 0, 0, .14);
+        padding: 12px 20px 16px; background: transparent;
+        border-radius: 0; box-shadow: none;
     }
     .quissly-quick--in-overlay .quissly-quick__list {
         display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -136,5 +139,21 @@ if (!$config instanceof \Quissly\Search\ViewModel\QuickConfig || !$config->shoul
     .quissly-quick__arrow svg { width: 20px; height: 20px; }
     .quissly-quick__arrow--prev { left: -6px; }
     .quissly-quick__arrow--next { right: -6px; }
+    /* Waiting for Quissly: a spinner (the Shopify app's), shown when an answer takes over 150 ms. */
+    .quissly-quick__loading {
+        display: flex; align-items: center; justify-content: center;
+        padding: 18px 12px; grid-column: 1 / -1;
+    }
+    .quissly-quick__spinner {
+        width: 18px; height: 18px;
+        border: 2px solid #ddd; border-top-color: #888; border-radius: 50%;
+        animation: quissly-quick-spin 0.7s linear infinite;
+    }
+    @keyframes quissly-quick-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .quissly-quick__spinner { animation-duration: 2s; } }
+    .quissly-quick__sr {
+        position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+        overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
 </style>
 <script src="<?= $escaper->escapeUrl($block->getViewFileUrl('Quissly_Search::js/quissly-quick.js')) ?>" defer></script>

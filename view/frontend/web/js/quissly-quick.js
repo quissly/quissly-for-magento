@@ -30,6 +30,8 @@
     var STYLE = config.getAttribute('data-style') === 'carousel' ? 'carousel' : 'rows';
     var LABEL_ALL = config.getAttribute('data-label-all') || 'See all';
     var LABEL_DETAILS = config.getAttribute('data-label-details') || 'Details';
+    var LABEL_SEARCHING = config.getAttribute('data-label-searching') || 'Searching…';
+    var LOADING_DELAY_MS = 150;
     var MIN_CHARS = 2;
     var DEBOUNCE_MS = 300;
 
@@ -68,6 +70,7 @@
     var panel = null;
     var track = null;
     var timer = null;
+    var loadingTimer = null; // the spinner, shown when an answer takes longer than LOADING_DELAY_MS
     var sequence = 0;
     var allSuggestions = [];
     var term = '';
@@ -168,10 +171,35 @@
     }
 
     function close() {
+        stopLoading();
         if (panel) {
             panel.hidden = true;
         }
         allSuggestions = [];
+    }
+
+    function stopLoading() {
+        window.clearTimeout(loadingTimer);
+        loadingTimer = null;
+    }
+
+    /**
+     * A spinner while Quissly answers (the Shopify app's), named for screen readers.
+     */
+    function showLoading() {
+        ensurePanel();
+        while (panel.firstChild) {
+            panel.removeChild(panel.firstChild);
+        }
+        var wait = el('div', 'quissly-quick__loading');
+        wait.setAttribute('role', 'status');
+        var spinner = el('span', 'quissly-quick__spinner');
+        spinner.setAttribute('aria-hidden', 'true');
+        wait.appendChild(spinner);
+        wait.appendChild(el('span', 'quissly-quick__sr', LABEL_SEARCHING));
+        panel.appendChild(wait);
+        place();
+        panel.hidden = false;
     }
 
     /**
@@ -459,6 +487,13 @@
         var mine = ++sequence;
         var url = ENDPOINT + (ENDPOINT.indexOf('?') === -1 ? '?' : '&') + 'q=' + encodeURIComponent(value);
 
+        stopLoading();
+        loadingTimer = window.setTimeout(function () {
+            if (mine === sequence) {
+                showLoading();
+            }
+        }, LOADING_DELAY_MS);
+
         fetch(url, {credentials: 'same-origin'})
             .then(function (response) {
                 return response.ok ? response.json() : {suggestions: []};
@@ -468,12 +503,15 @@
                 if (mine !== sequence) {
                     return;
                 }
+                stopLoading();
                 allSuggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
                 paint();
             })
             .catch(function () {
                 // Nobody is owed a dropdown. Failing silently is correct here.
-                close();
+                if (mine === sequence) {
+                    close();
+                }
             });
     }
 
@@ -489,6 +527,7 @@
         term = (activeInput.value || '').trim();
         window.clearTimeout(timer);
         if (term.length < MIN_CHARS) {
+            sequence++; // an answer still on its way is for text that is gone
             close();
             return;
         }
