@@ -38,7 +38,7 @@ class ConnectionService
      * Run the probe for a website scope.
      *
      * @param int|null $websiteId null = current context
-     * @return array{code: string, message: string, http_status: int|null}
+     * @return array{code: string, message: string, http_status: int|null, detail: string}
      */
     public function test(?int $websiteId = null): array
     {
@@ -84,7 +84,11 @@ class ConnectionService
         $this->logger->info(
             sprintf('[quissly] connection test: http=%d code=%s', $response['status'], $code)
         );
-        return $this->result($code, $response['status'] ?: null);
+        return $this->result(
+            $code,
+            $response['status'] ?: null,
+            $this->classifier->detail((string)$response['body'])
+        );
     }
 
     /**
@@ -92,14 +96,18 @@ class ConnectionService
      *
      * @param string $code
      * @param int|null $httpStatus
-     * @return array{code: string, message: string, http_status: int|null}
+     * @param string $detail Quissly's own reason when it refused
+     * @return array{code: string, message: string, http_status: int|null, detail: string}
      */
-    private function result(string $code, ?int $httpStatus): array
+    private function result(string $code, ?int $httpStatus, string $detail = ''): array
     {
+        $detail = $code === ResponseClassifier::OK ? '' : $detail;
+
         return [
             'code' => $code,
-            'message' => $this->classifier->describe($code),
+            'message' => $this->classifier->describe($code, $detail),
             'http_status' => $httpStatus,
+            'detail' => $detail,
         ];
     }
 }

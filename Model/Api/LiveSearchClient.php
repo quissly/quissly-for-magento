@@ -45,6 +45,7 @@ class LiveSearchClient
      * @param int $pageSize
      * @param int|null $websiteId
      * @param array $shopper who is searching: user_id / device / os (Shopper::forSearch())
+     * @param string|null $priceSort 'asc' / 'desc' for the shopper's price sort, null for relevance
      * @return SearchOutcome
      */
     public function search(
@@ -52,7 +53,8 @@ class LiveSearchClient
         int $pageNumber,
         int $pageSize,
         ?int $websiteId,
-        array $shopper = []
+        array $shopper = [],
+        ?string $priceSort = null
     ): SearchOutcome {
         $token = $this->settings->apiToken($websiteId);
         $privateKey = $this->settings->privateKeyPem($websiteId);
@@ -68,10 +70,8 @@ class LiveSearchClient
                     'user_id' => $shopper['user_id'] ?? null,
                     'page_number' => max(1, $pageNumber),
                     'page_size' => max(1, $pageSize),
-                    'sort_by' => 0,
-                    'sort_type' => 2,
                     'channel' => 'web',
-                ] + array_intersect_key($shopper, ['device' => true, 'os' => true]),
+                ] + $this->sort($priceSort) + array_intersect_key($shopper, ['device' => true, 'os' => true]),
                 $token,
                 $privateKey,
                 $this->settings->environment($websiteId),
@@ -93,7 +93,7 @@ class LiveSearchClient
         );
         if ($code !== ResponseClassifier::OK) {
             $this->logger->info(sprintf('[quissly] qsearch http=%d code=%s', $response['status'], $code));
-            return new SearchOutcome($code);
+            return new SearchOutcome($code, detail: $this->classifier->detail((string)$response['body']));
         }
 
         $parsed = $this->parser->parse($response['body']);
@@ -118,5 +118,24 @@ class LiveSearchClient
             $parsed['total'],
             $parsed['variants'] ?? []
         );
+    }
+
+    /**
+     * Quissly's sort fields for the shopper's sort.
+     *
+     * Quissly's search reads sort_by 0 = relevance, 1 = price (its discounted_price, which
+     * the sync always sends), 2 = discount percent; sort_type 1 = ascending, 2 = descending.
+     * It sorts every product that matched, then cuts the page, so page 1 of a price sort
+     * holds the cheapest of all the matches.
+     *
+     * @param string|null $priceSort 'asc' / 'desc', or null for relevance
+     * @return array{sort_by: int, sort_type: int}
+     */
+    public function sort(?string $priceSort): array
+    {
+        if ($priceSort === null) {
+            return ['sort_by' => 0, 'sort_type' => 2];
+        }
+        return ['sort_by' => 1, 'sort_type' => $priceSort === 'desc' ? 2 : 1];
     }
 }

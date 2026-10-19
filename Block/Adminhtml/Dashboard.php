@@ -105,6 +105,7 @@ class Dashboard extends Template
                 'intercepting' => $this->isIntercepting($id),
                 'progress' => $this->worker->progress($id),
                 'health' => $this->healthDetail($id),
+                'search_health' => $this->healthDetail($id, HealthRecorder::CHANNEL_SEARCH),
                 'features' => $this->features($id),
                 'sync_url' => $this->getUrl('quissly/dashboard/sync', ['website_id' => $id]),
             ];
@@ -214,16 +215,20 @@ class Dashboard extends Template
      * protocol to diagnose. Showing the bare code made a merchant search the
      * internet for "clock_skew_suspected".
      *
+     * The search channel is Quissly refusing shoppers' searches (recorded by the search plugin),
+     * the catalog channel the sync's calls.
+     *
      * @param int $websiteId
-     * @return array|null Shape: {code: string, at: int, explanation: string}
+     * @param string $channel HealthRecorder::CHANNEL_CATALOG or CHANNEL_SEARCH
+     * @return array|null Shape: {code: string, at: int, detail: string, explanation: string}
      */
-    private function healthDetail(int $websiteId): ?array
+    private function healthDetail(int $websiteId, string $channel = HealthRecorder::CHANNEL_CATALOG): ?array
     {
-        $failure = $this->health->currentFailure($websiteId);
+        $failure = $this->health->currentFailure($websiteId, $channel);
         if ($failure === null) {
             return null;
         }
-        $failure['explanation'] = $this->classifier->describe((string)$failure['code']);
+        $failure['explanation'] = $this->classifier->describe((string)$failure['code'], (string)$failure['detail']);
         return $failure;
     }
 
@@ -241,7 +246,9 @@ class Dashboard extends Template
     {
         return $this->settings->isSearchEnabled($websiteId)
             && $this->settings->isConfigured($websiteId)
-            && $this->gate->isOpen($websiteId);
+            && $this->gate->isOpen($websiteId)
+            // Quissly refusing the store's searches: they all fall back to Magento's.
+            && $this->health->currentFailure($websiteId, HealthRecorder::CHANNEL_SEARCH) === null;
     }
 
     /**

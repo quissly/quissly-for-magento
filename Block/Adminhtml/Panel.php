@@ -72,7 +72,10 @@ class Panel extends Template
             return null;
         }
 
-        return $this->settings->panelUrl($this->websiteId()) . '/?' . http_build_query([
+        // The tokens go in the fragment (#), which the browser never sends to a server, so they stay
+        // out of access logs and Referer headers; the panel reads them there first (the query
+        // string only for older links) and removes them from its address.
+        return $this->settings->panelUrl($this->websiteId()) . '/#' . http_build_query([
             'access_token' => $result['access_token'],
             'refresh_token' => $result['refresh_token'],
         ]);

@@ -38,18 +38,23 @@ class CriteriaInspector
     /**
      * Sort fields that keep interception honest.
      *
-     * Relevance plus the engine's entity_id tie-breaker; anything else (price,
-     * name…) bails so native sorting stays truthful (spike-reproduced hazard).
+     * Relevance plus the engine's entity_id tie-breaker; anything else (name,
+     * position…) bails so native sorting stays truthful (spike-reproduced hazard:
+     * Magento renders our order whatever the toolbar says).
+     *
+     * price is asked of Quissly (since 2026-10-19, as the WooCommerce, CS-Cart and
+     * PrestaShop plugins do): it sorts every match by price before cutting the page,
+     * so the order we render is the price order (priceSort()).
      *
      * is_out_of_stock is not a shopper's choice: MSI adds it to every listing
      * when "Display Out of Stock Products" is Yes, and on a search page (no
      * category) always ("out of stock to bottom",
      * CollectionPlugin::applyOutOfStockSortOrders). Quissly returns in-stock
      * products only, so nothing is lost by answering such a search. Without it,
-     * every search on such a store skipped Quissly silently (Cotton & Co,
-     * 2.4.7-p10, 2026-09-25).
+     * every search on such a store skipped Quissly silently (a live
+     * 2.4.7-p10 store, 2026-09-25).
      */
-    private const ALLOWED_SORT_FIELDS = ['relevance', 'entity_id', 'is_out_of_stock'];
+    private const ALLOWED_SORT_FIELDS = ['relevance', 'entity_id', 'is_out_of_stock', 'price'];
 
     /**
      * Sequences the backend rejects with a 422 - pre-screened
@@ -153,7 +158,9 @@ class CriteriaInspector
     }
 
     /**
-     * Whether the sort orders contain only relevance (+ entity_id tie-breaker).
+     * Whether every sort order is one interception honours.
+     *
+     * ALLOWED_SORT_FIELDS: relevance and its tie-breakers, or price.
      *
      * Sort orders at this layer are a plain field => direction map (spike-verified).
      *
@@ -163,6 +170,24 @@ class CriteriaInspector
     public function isRelevanceSortOnly(SearchCriteriaInterface $criteria): bool
     {
         return $this->foreignSort($criteria) === null;
+    }
+
+    /**
+     * The shopper's price sort: 'asc', 'desc', or null when the search is not sorted by price.
+     *
+     * @param SearchCriteriaInterface $criteria
+     * @return string|null
+     */
+    public function priceSort(SearchCriteriaInterface $criteria): ?string
+    {
+        foreach ((array)$criteria->getSortOrders() as $field => $direction) {
+            $name = is_object($direction) ? (string)$direction->getField() : (string)$field;
+            if ($name === 'price') {
+                $value = is_object($direction) ? (string)$direction->getDirection() : (string)$direction;
+                return strtolower($value) === 'desc' ? 'desc' : 'asc';
+            }
+        }
+        return null;
     }
 
     /**

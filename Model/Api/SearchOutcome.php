@@ -24,12 +24,14 @@ class SearchOutcome
      * @param int[] $ids Validated positive product ids, page slice, ranked order
      * @param int $total num_total_results
      * @param array $variants parent product id => the variant that matched
+     * @param string $detail Quissly's own reason when it refused ('' otherwise)
      */
     public function __construct(
         public readonly string $code,
         public readonly array $ids = [],
         public readonly int $total = 0,
-        public readonly array $variants = []
+        public readonly array $variants = [],
+        public readonly string $detail = ''
     ) {
     }
 

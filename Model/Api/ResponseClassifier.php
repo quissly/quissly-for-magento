@@ -97,10 +97,15 @@ class ResponseClassifier
      * Human-readable admin message for a classification.
      *
      * @param string $code
+     * @param string $detail Quissly's own reason, quoted after the text ('' for none)
      * @return string
      */
-    public function describe(string $code): string
+    public function describe(string $code, string $detail = ''): string
     {
+        if ($detail !== '') {
+            // Quissly's own words ("No active quota grant for this service") say more than the code.
+            return $this->describe($code) . ' ' . sprintf('Quissly said: "%s".', $detail);
+        }
         return match ($code) {
             self::OK => 'Connected. Quissly answered the signed test request.',
             self::NOT_CONFIGURED => 'Not configured: enter the API token and generate keys first.',
@@ -112,8 +117,9 @@ class ResponseClassifier
                 . 'debugging credentials - signed requests are only valid for ±60 seconds.',
             self::PAYMENT_REQUIRED => 'Quissly reports a billing problem with this account (HTTP 402). '
                 . 'Check your Quissly console.',
-            self::FORBIDDEN => 'Quissly refused the request (HTTP 403 from the application). Check the '
-                . 'account status in your Quissly console.',
+            self::FORBIDDEN => 'Quissly refused the request (HTTP 403 from the application). Usually the '
+                . 'store has no active plan with search yet - see Billing; a plan chosen for manual invoice '
+                . 'works once Quissly activates it.',
             self::EDGE_BLOCKED => 'Blocked before reaching Quissly (HTTP 403 from the network edge). '
                 . 'This is usually infrastructure or IP filtering - not a credentials problem.',
             self::INVALID_REQUEST => 'Quissly rejected the request as invalid - this is a module bug '
@@ -141,5 +147,20 @@ class ResponseClassifier
             return 0;
         }
         return abs($serverTimestamp - $localTimestamp);
+    }
+
+    /**
+     * Quissly's reason for refusing (the `detail` of its JSON error answer), as plain text, or ''.
+     *
+     * @param string $body
+     * @return string
+     */
+    public function detail(string $body): string
+    {
+        $decoded = json_decode($body, true);
+        $detail = is_array($decoded) && is_string($decoded['detail'] ?? null) ? $decoded['detail'] : '';
+        $detail = trim((string)preg_replace('/\s+/', ' ', strip_tags($detail)));
+
+        return mb_substr($detail, 0, 200);
     }
 }

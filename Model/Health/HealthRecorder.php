@@ -41,16 +41,18 @@ class HealthRecorder
      * @param int $websiteId
      * @param string $code ResponseClassifier constant
      * @param string $channel CHANNEL_CATALOG or CHANNEL_SEARCH
+     * @param string $detail Quissly's own reason ("No active quota grant for this service"), '' if none
      * @return void
      */
     public function recordFailure(
         int $websiteId,
         string $code,
-        string $channel = self::CHANNEL_CATALOG
+        string $channel = self::CHANNEL_CATALOG,
+        string $detail = ''
     ): void {
         $this->flagManager->saveFlag(
             $this->flagCode($websiteId, $channel),
-            ['code' => $code, 'at' => time()]
+            ['code' => $code, 'at' => time(), 'detail' => $detail]
         );
     }
 
@@ -71,7 +73,7 @@ class HealthRecorder
      *
      * @param int $websiteId
      * @param string $channel CHANNEL_CATALOG or CHANNEL_SEARCH
-     * @return array{code: string, at: int}|null
+     * @return array{code: string, at: int, detail: string}|null
      */
     public function currentFailure(int $websiteId, string $channel = self::CHANNEL_CATALOG): ?array
     {
@@ -79,7 +81,11 @@ class HealthRecorder
         if (!is_array($data) || empty($data['code'])) {
             return null;
         }
-        return ['code' => (string)$data['code'], 'at' => (int)($data['at'] ?? 0)];
+        return [
+            'code' => (string)$data['code'],
+            'at' => (int)($data['at'] ?? 0),
+            'detail' => (string)($data['detail'] ?? ''),
+        ];
     }
 
     /**

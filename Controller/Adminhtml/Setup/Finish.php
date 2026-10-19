@@ -11,7 +11,11 @@ use Magento\Backend\App\Action;
 use Magento\Framework\App\Action\HttpPostActionInterface;
 use Magento\Framework\Controller\Result\Json;
 use Magento\Framework\Controller\Result\JsonFactory;
+use Quissly\Search\Model\Api\ConnectionService;
+use Quissly\Search\Model\Api\ResponseClassifier;
+use Quissly\Search\Model\Api\SearchOutcome;
 use Quissly\Search\Model\Connect\Onboarding;
+use Quissly\Search\Model\Health\HealthRecorder;
 
 /**
  * Finish Setup: what the plan includes switches on, Setup is done, the Dashboard takes over.
@@ -27,11 +31,15 @@ class Finish extends Action implements HttpPostActionInterface
      * @param Action\Context $context
      * @param Onboarding $onboarding
      * @param JsonFactory $jsonFactory
+     * @param ConnectionService $connection
+     * @param HealthRecorder $health
      */
     public function __construct(
         Action\Context $context,
         private readonly Onboarding $onboarding,
-        private readonly JsonFactory $jsonFactory
+        private readonly JsonFactory $jsonFactory,
+        private readonly ConnectionService $connection,
+        private readonly HealthRecorder $health
     ) {
         parent::__construct($context);
     }
@@ -65,8 +73,33 @@ class Finish extends Action implements HttpPostActionInterface
                 ),
             ]);
         }
+        $search = in_array('qsearch', $this->onboarding->services(), true) || $this->onboarding->services() === [];
+        // Search is switched on: one search says whether Quissly answers it, so the Dashboard does
+        // not say Live for a store whose searches Quissly refuses (no plan it knows of - a plan
+        // chosen for manual invoice; found testing the CS-Cart add-on, 2026-10-19).
+        if ($search) {
+            $websiteId = $this->onboarding->websiteId();
+            $probe = $this->connection->test($websiteId);
+            if ((new SearchOutcome($probe['code']))->isAuthClass()) {
+                $this->health->recordFailure(
+                    $websiteId,
+                    $probe['code'],
+                    HealthRecorder::CHANNEL_SEARCH,
+                    $probe['detail']
+                );
+                $this->messageManager->addWarningMessage(__(
+                    'Setup is finished, but Quissly refused the first search, so the store keeps '
+                    . 'Magento\'s search for now. %1',
+                    $probe['message']
+                ));
+                return $result->setData(['ok' => true, 'redirect' => $this->getUrl('quissly/dashboard/index')]);
+            }
+            if ($probe['code'] === ResponseClassifier::OK) {
+                $this->health->recordSuccess($websiteId, HealthRecorder::CHANNEL_SEARCH);
+            }
+        }
         $this->messageManager->addSuccessMessage(
-            in_array('qsearch', $this->onboarding->services(), true) || $this->onboarding->services() === []
+            $search
                 ? __('Quissly search is live on your store.')
                 : __('Your AI shopping assistant is live on your store.')
         );

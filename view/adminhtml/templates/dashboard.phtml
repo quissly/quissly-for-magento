@@ -157,6 +157,18 @@ $websites = $block->websites();
                             <?php endif; ?>
                         </td>
                     </tr>
+                    <?php if (is_array($site['search_health'] ?? null)): ?>
+                    <tr>
+                        <th><?= $escaper->escapeHtml(__('Shoppers\' searches')) ?></th>
+                        <td>
+                            <span class="grid-severity-critical">
+                                <?php $refused = __('Quissly refuses them; Magento\'s own search answers.'); ?>
+                                <span><?= $escaper->escapeHtml($refused) ?></span>
+                            </span>
+                            <div><small><?= $escaper->escapeHtml($site['search_health']['explanation']) ?></small></div>
+                        </td>
+                    </tr>
+                    <?php endif; ?>
                     <?php if (is_array($site['health'])): ?>
                     <tr>
                         <th><?= $escaper->escapeHtml(__('Connection health')) ?></th>

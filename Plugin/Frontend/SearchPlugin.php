@@ -23,6 +23,7 @@ use Quissly\Search\Model\Health\HealthRecorder;
 use Quissly\Search\Model\Search\CriteriaInspector;
 use Quissly\Search\Model\Search\SearchSignal;
 use Quissly\Search\Model\Search\Shopper;
+use Quissly\Search\Model\Search\SnapshotPriceOrder;
 use Quissly\Search\Model\Search\TokenStore;
 use Quissly\Search\Model\Search\VariantHints;
 use Quissly\Search\Model\Sync\FirstSyncGate;
@@ -75,6 +76,7 @@ class SearchPlugin
      * @param VariantHints $variantHints
      * @param SearchSignal $signal
      * @param Shopper $shopper
+     * @param SnapshotPriceOrder $snapshotPriceOrder
      */
     public function __construct(
         private readonly Settings $settings,
@@ -90,7 +92,8 @@ class SearchPlugin
         private readonly TokenStore $tokenStore,
         private readonly VariantHints $variantHints,
         private readonly SearchSignal $signal,
-        private readonly Shopper $shopper
+        private readonly Shopper $shopper,
+        private readonly SnapshotPriceOrder $snapshotPriceOrder
     ) {
     }
 
@@ -140,8 +143,16 @@ class SearchPlugin
         $pageSize = (int)$searchCriteria->getPageSize() ?: 12;
 
         // Who is searching (user_id / device / os): this page is not cached while Quissly
-        // answers (SearchPageCache), so it is this shopper's.
-        $outcome = $this->client->search($term, $pageNumber, $pageSize, null, $this->shopper->forSearch());
+        // answers (SearchPageCache), so it is this shopper's. A price sort is Quissly's
+        // to do: it sorts every match, then cuts the page.
+        $outcome = $this->client->search(
+            $term,
+            $pageNumber,
+            $pageSize,
+            null,
+            $this->shopper->forSearch(),
+            $this->inspector->priceSort($searchCriteria)
+        );
 
         // Search-channel health only: a refused shopper search says nothing about
         // whether catalog ingestion is working, and the admin's catalog banner
@@ -150,7 +161,8 @@ class SearchPlugin
             $this->health->recordFailure(
                 $this->currentWebsiteId(),
                 $outcome->code,
-                HealthRecorder::CHANNEL_SEARCH
+                HealthRecorder::CHANNEL_SEARCH,
+                $outcome->detail
             );
         } elseif ($outcome->isOk()) {
             $this->health->recordSuccess($this->currentWebsiteId(), HealthRecorder::CHANNEL_SEARCH);
@@ -208,7 +220,7 @@ class SearchPlugin
      * what made an MSI sort order that skipped every search on a live store
      * take days to find. The reason goes to the diagnostic header and the
      * ?quissly_debug=1 badge; the log line only when the flag asks for it, so a
-     * busy store's log does not fill with price-sorted searches. Requests that
+     * busy store's log does not fill with name-sorted searches. Requests that
      * are no search at all (category pages) stay silent.
      *
      * @param string $reason
@@ -248,6 +260,11 @@ class SearchPlugin
                 count($this->handoff['ids']),
                 count($this->handoff['variants'])
             ));
+            // A snapshot cannot be asked again: a price sort is done here.
+            $priceSort = $this->inspector->priceSort($criteria);
+            if ($priceSort !== null) {
+                $this->handoff['ids'] = $this->snapshotPriceOrder->sort($this->handoff['ids'], $priceSort);
+            }
         }
         // The same hint the typed path records. Without it a voice or image
         // search returned the right products wearing the parent's face, while

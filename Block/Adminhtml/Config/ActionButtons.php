@@ -13,6 +13,7 @@ use Magento\Config\Block\System\Config\Form\Field;
 use Magento\Framework\Data\Form\Element\AbstractElement;
 use Quissly\Search\Model\Config\Settings;
 use Quissly\Search\Model\Connect\ConnectHold;
+use Quissly\Search\Model\Api\ResponseClassifier;
 use Quissly\Search\Model\Health\HealthRecorder;
 use Quissly\Search\Model\Sync\FirstSyncGate;
 
@@ -29,6 +30,7 @@ class ActionButtons extends Field
      * @param HealthRecorder $health
      * @param Session $authSession
      * @param ConnectHold $hold
+     * @param ResponseClassifier $classifier
      * @param array $data
      */
     public function __construct(
@@ -38,6 +40,7 @@ class ActionButtons extends Field
         private readonly HealthRecorder $health,
         private readonly Session $authSession,
         private readonly ConnectHold $hold,
+        private readonly ResponseClassifier $classifier,
         array $data = []
     ) {
         parent::__construct($context, $data);
@@ -100,6 +103,15 @@ class ActionButtons extends Field
         }
         if (!$this->gate->isOpen($websiteId === 0 ? 1 : $websiteId)) {
             return ['state' => 'INACTIVE', 'detail' => (string)__('Waiting for the first full catalog sync.')];
+        }
+        // Quissly refusing shoppers' searches (key, payment, plan) - recorded by the search plugin on
+        // its own channel, which this status never read: it said ACTIVE while every search fell back.
+        $refused = $this->health->currentFailure($websiteId === 0 ? 1 : $websiteId, HealthRecorder::CHANNEL_SEARCH);
+        if ($refused !== null) {
+            return ['state' => 'INACTIVE', 'detail' => (string)__(
+                'Shoppers see native search: %1',
+                $this->classifier->describe($refused['code'], $refused['detail'])
+            )];
         }
         $failure = $this->health->currentFailure($websiteId === 0 ? 1 : $websiteId);
         if ($failure !== null) {
