@@ -134,8 +134,11 @@ back the same way. Settings, credentials and sync state live in the database and
 
 ## How search behaves
 
-- **Order:** results come in Quissly's order for the default (Relevance) sort. When a shopper picks
-  another sort (Price, Name, Position) Magento's own search answers, so the sort stays truthful.
+- **Order:** results come in Quissly's order for the default (Relevance) sort. A shopper's Price or
+  Name sort - and a "Newest" option your theme adds with the code `created_at` - is done by Quissly
+  across all the matches. Any other sort (Position, for one) is answered by Magento's own search, so
+  the sort stays truthful. On a website with several store views, a Name sort is Quissly's only on
+  the store view whose names are synced (the website's first); the others use Magento's own.
 - **Filters:** a search refined with layered navigation is answered by Magento's own search, so the
   filters stay exact.
 - **No results** shows your theme's normal "no results" page - that is Quissly's real answer.

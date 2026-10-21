@@ -23,7 +23,7 @@ use Quissly\Search\Model\Health\HealthRecorder;
 use Quissly\Search\Model\Search\CriteriaInspector;
 use Quissly\Search\Model\Search\SearchSignal;
 use Quissly\Search\Model\Search\Shopper;
-use Quissly\Search\Model\Search\SnapshotPriceOrder;
+use Quissly\Search\Model\Search\SnapshotOrder;
 use Quissly\Search\Model\Search\TokenStore;
 use Quissly\Search\Model\Search\VariantHints;
 use Quissly\Search\Model\Sync\FirstSyncGate;
@@ -76,7 +76,7 @@ class SearchPlugin
      * @param VariantHints $variantHints
      * @param SearchSignal $signal
      * @param Shopper $shopper
-     * @param SnapshotPriceOrder $snapshotPriceOrder
+     * @param SnapshotOrder $snapshotOrder
      */
     public function __construct(
         private readonly Settings $settings,
@@ -93,7 +93,7 @@ class SearchPlugin
         private readonly VariantHints $variantHints,
         private readonly SearchSignal $signal,
         private readonly Shopper $shopper,
-        private readonly SnapshotPriceOrder $snapshotPriceOrder
+        private readonly SnapshotOrder $snapshotOrder
     ) {
     }
 
@@ -126,10 +126,12 @@ class SearchPlugin
         }
         // Guard condition 5: module gates for the CURRENT website context
         // (Settings resolves the store context's website when passed null).
+        $sort = $this->inspector->quisslySort($searchCriteria);
         $setting = match (true) {
             !$this->settings->isSearchEnabled(null) => 'search-off',
             !$this->settings->isConfigured(null) => 'not-configured',
             !$this->gate->isOpen($this->currentWebsiteId()) => 'gate-closed',
+            ($sort['field'] ?? null) === 'name' && !$this->titlesAreThisStoreViews() => 'sort:name:store-view',
             default => null,
         };
         if ($setting !== null) {
@@ -143,15 +145,15 @@ class SearchPlugin
         $pageSize = (int)$searchCriteria->getPageSize() ?: 12;
 
         // Who is searching (user_id / device / os): this page is not cached while Quissly
-        // answers (SearchPageCache), so it is this shopper's. A price sort is Quissly's
-        // to do: it sorts every match, then cuts the page.
+        // answers (SearchPageCache), so it is this shopper's. A price, name or newest
+        // sort is Quissly's to do: it sorts every match, then cuts the page.
         $outcome = $this->client->search(
             $term,
             $pageNumber,
             $pageSize,
             null,
             $this->shopper->forSearch(),
-            $this->inspector->priceSort($searchCriteria)
+            $sort
         );
 
         // Search-channel health only: a refused shopper search says nothing about
@@ -220,7 +222,7 @@ class SearchPlugin
      * what made an MSI sort order that skipped every search on a live store
      * take days to find. The reason goes to the diagnostic header and the
      * ?quissly_debug=1 badge; the log line only when the flag asks for it, so a
-     * busy store's log does not fill with name-sorted searches. Requests that
+     * busy store's log does not fill with position-sorted searches. Requests that
      * are no search at all (category pages) stay silent.
      *
      * @param string $reason
@@ -260,10 +262,14 @@ class SearchPlugin
                 count($this->handoff['ids']),
                 count($this->handoff['variants'])
             ));
-            // A snapshot cannot be asked again: a price sort is done here.
-            $priceSort = $this->inspector->priceSort($criteria);
-            if ($priceSort !== null) {
-                $this->handoff['ids'] = $this->snapshotPriceOrder->sort($this->handoff['ids'], $priceSort);
+            // A snapshot cannot be asked again: the toolbar's sort is done here.
+            $sort = $this->inspector->quisslySort($criteria);
+            if ($sort !== null) {
+                $this->handoff['ids'] = $this->snapshotOrder->sort(
+                    $this->handoff['ids'],
+                    $sort['field'],
+                    $sort['direction']
+                );
             }
         }
         // The same hint the typed path records. Without it a voice or image
@@ -323,6 +329,28 @@ class SearchPlugin
         $result->setAggregations(null);
         $result->setSearchCriteria($criteria);
         return $result;
+    }
+
+    /**
+     * Whether the titles Quissly sorts by are the names this store view shows.
+     *
+     * The sync renders a website's titles against one store view - the first of the
+     * website's (the rule of SyncWorker::defaultStoreOfWebsite(), repeated here). On
+     * another store view of the website, in another language say, Quissly's title
+     * order is not the order of the names the shopper reads, so a name sort there is
+     * native search's.
+     *
+     * @return bool
+     */
+    private function titlesAreThisStoreViews(): bool
+    {
+        $current = $this->storeManager->getStore();
+        foreach ($this->storeManager->getStores() as $store) {
+            if ((int)$store->getWebsiteId() === (int)$current->getWebsiteId()) {
+                return (int)$store->getId() === (int)$current->getId();
+            }
+        }
+        return (int)$this->storeManager->getDefaultStoreView()?->getId() === (int)$current->getId();
     }
 
     /**

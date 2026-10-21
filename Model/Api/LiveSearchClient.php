@@ -45,7 +45,7 @@ class LiveSearchClient
      * @param int $pageSize
      * @param int|null $websiteId
      * @param array $shopper who is searching: user_id / device / os (Shopper::forSearch())
-     * @param string|null $priceSort 'asc' / 'desc' for the shopper's price sort, null for relevance
+     * @param array|null $sort the shopper's sort (CriteriaInspector::quisslySort()), null for relevance
      * @return SearchOutcome
      */
     public function search(
@@ -54,7 +54,7 @@ class LiveSearchClient
         int $pageSize,
         ?int $websiteId,
         array $shopper = [],
-        ?string $priceSort = null
+        ?array $sort = null
     ): SearchOutcome {
         $token = $this->settings->apiToken($websiteId);
         $privateKey = $this->settings->privateKeyPem($websiteId);
@@ -71,7 +71,7 @@ class LiveSearchClient
                     'page_number' => max(1, $pageNumber),
                     'page_size' => max(1, $pageSize),
                     'channel' => 'web',
-                ] + $this->sort($priceSort) + array_intersect_key($shopper, ['device' => true, 'os' => true]),
+                ] + $this->sort($sort) + array_intersect_key($shopper, ['device' => true, 'os' => true]),
                 $token,
                 $privateKey,
                 $this->settings->environment($websiteId),
@@ -121,21 +121,32 @@ class LiveSearchClient
     }
 
     /**
-     * Quissly's sort fields for the shopper's sort.
+     * Quissly's sort_by for each Magento sort field the module hands it.
      *
      * Quissly's search reads sort_by 0 = relevance, 1 = price (its discounted_price, which
-     * the sync always sends), 2 = discount percent; sort_type 1 = ascending, 2 = descending.
-     * It sorts every product that matched, then cuts the page, so page 1 of a price sort
-     * holds the cheapest of all the matches.
+     * the sync always sends), 2 = discount percent, 3 = title (case-insensitive),
+     * 4 = popularity, 5 = created_at (metadata.created_at, unix seconds, from the sync);
+     * sort_type 1 = ascending, 2 = descending. Discount and popularity have no Magento
+     * sort to come from, so they are never sent.
+     */
+    private const SORT_BY = ['price' => 1, 'name' => 3, 'created_at' => 5];
+
+    /**
+     * Quissly's sort fields for the shopper's sort.
      *
-     * @param string|null $priceSort 'asc' / 'desc', or null for relevance
+     * Quissly sorts every product that matched (variants folded into their parent), then
+     * cuts the page, so page 1 of a price sort holds the cheapest of all the matches. A
+     * product without the value (a record synced before it was sent) comes last, either way.
+     *
+     * @param array|null $sort {field, direction: 'asc'|'desc'}, or null for relevance
      * @return array{sort_by: int, sort_type: int}
      */
-    public function sort(?string $priceSort): array
+    public function sort(?array $sort): array
     {
-        if ($priceSort === null) {
+        $code = self::SORT_BY[$sort['field'] ?? ''] ?? null;
+        if ($code === null) {
             return ['sort_by' => 0, 'sort_type' => 2];
         }
-        return ['sort_by' => 1, 'sort_type' => $priceSort === 'desc' ? 2 : 1];
+        return ['sort_by' => $code, 'sort_type' => ($sort['direction'] ?? 'asc') === 'desc' ? 2 : 1];
     }
 }

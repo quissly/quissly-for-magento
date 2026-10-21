@@ -40,7 +40,10 @@ use Magento\Store\Api\Data\StoreInterface;
  *  - the merchant's attribute list rides in metadata (by code) AND inside the
  *    embedded text, on parents in full and on variants only where a value
  *    differs from the parent's;
- *  - native review summary as metadata.rating / reviews_count when present.
+ *  - native review summary as metadata.rating / reviews_count when present;
+ *  - metadata.created_at = when the product was created, unix seconds (an int,
+ *    always), for Quissly's newest sort (sort_by 5), on the parent only -
+ *    variants inherit it; never folded into the embedded text.
  */
 class ProductMapper
 {
@@ -54,6 +57,13 @@ class ProductMapper
     public const MAX_EXTRA_TEXT = 1500;
 
     private const TYPE_BUNDLE = 'bundle';
+
+    /**
+     * Metadata the sync fills itself for Quissly's sorts, never from the merchant's
+     * attribute list: a listed one would be folded into the embedded text and would
+     * put text where Quissly compares numbers.
+     */
+    public const SORT_METADATA_KEYS = ['created_at'];
 
     /** Magento type id -> the platform-neutral type every plugin sends (2026-09-10). */
     private const WIRE_TYPES = [
@@ -131,7 +141,7 @@ class ProductMapper
     public function map(Product $product, StoreInterface $store, int $websiteId = 0): array
     {
         $id = (string)(int)$product->getId();
-        $parentAttributes = $this->attributes->values($product, $websiteId ?: null);
+        $parentAttributes = $this->attributeValues($product, $websiteId);
         $record = $this->baseRecord($product, $store, $parentAttributes);
         $variantMap = [$id => $id];
 
@@ -157,6 +167,45 @@ class ProductMapper
         }
 
         return ['record' => $record, 'variant_map' => $variantMap];
+    }
+
+    /**
+     * The merchant's attribute values, without the keys the sync fills itself.
+     *
+     * @param Product $product
+     * @param int $websiteId
+     * @return array
+     */
+    private function attributeValues(Product $product, int $websiteId): array
+    {
+        return array_diff_key(
+            $this->attributes->values($product, $websiteId ?: null),
+            array_flip(self::SORT_METADATA_KEYS)
+        );
+    }
+
+    /**
+     * When the product was created, as Quissly's created_at sort reads it: unix seconds.
+     *
+     * The catalog_product_entity.created_at TIMESTAMP is read on a UTC connection
+     * (Magento's adapter sets time_zone +00:00), so the text is UTC. Always an int or
+     * nothing: Quissly compares the values directly, and one string among a store's
+     * ints breaks the sort. A product without it sorts last.
+     *
+     * @param mixed $raw 'Y-m-d H:i:s'
+     * @return int|null
+     */
+    public function createdAt($raw): ?int
+    {
+        if (!is_string($raw) || $raw === '' || str_starts_with($raw, '0000')) {
+            return null;
+        }
+        try {
+            $seconds = (new \DateTimeImmutable($raw, new \DateTimeZone('UTC')))->getTimestamp();
+        } catch (\Exception $e) {
+            return null;
+        }
+        return $seconds > 0 ? $seconds : null;
     }
 
     /**
@@ -206,6 +255,7 @@ class ProductMapper
                     'sku' => (string)$product->getSku(),
                     'type' => $this->wireType((string)$product->getTypeId()),
                     'categories' => $this->categoryList($categories),
+                    'created_at' => $this->createdAt($product->getData('created_at')),
                 ]
                 + $this->attributeMetadata($attributes)
                 + ($isBundle ? ['price_type' => $fixedPrice ? 'fixed' : 'dynamic'] : [])
@@ -272,7 +322,7 @@ class ProductMapper
             }
             // Only what is the child's OWN: values identical to the parent's are
             // inherited server-side (2026-09-10).
-            $own = $this->differingValues($parentAttributes, $this->attributes->values($child, $websiteId ?: null));
+            $own = $this->differingValues($parentAttributes, $this->attributeValues($child, $websiteId));
             $inStock = $parentInStock && $this->isInStock($child, (int)$store->getWebsiteId());
             $variants[] = [
                 'id' => $childId,

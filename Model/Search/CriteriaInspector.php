@@ -38,13 +38,14 @@ class CriteriaInspector
     /**
      * Sort fields that keep interception honest.
      *
-     * Relevance plus the engine's entity_id tie-breaker; anything else (name,
-     * position…) bails so native sorting stays truthful (spike-reproduced hazard:
-     * Magento renders our order whatever the toolbar says).
+     * Relevance plus the engine's entity_id tie-breaker; anything else (position,
+     * a theme's own codes…) bails so native sorting stays truthful (spike-reproduced
+     * hazard: Magento renders our order whatever the toolbar says).
      *
-     * price is asked of Quissly (since 2026-10-19, as the WooCommerce, CS-Cart and
-     * PrestaShop plugins do): it sorts every match by price before cutting the page,
-     * so the order we render is the price order (priceSort()).
+     * The QUISSLY_SORTS are asked of Quissly (price since 2026-10-19, as the
+     * WooCommerce, CS-Cart and PrestaShop plugins do; name and created_at since
+     * 2026-10-20): it sorts every match before cutting the page, so the order we
+     * render is the order the toolbar asked for (quisslySort()).
      *
      * is_out_of_stock is not a shopper's choice: MSI adds it to every listing
      * when "Display Out of Stock Products" is Yes, and on a search page (no
@@ -54,7 +55,17 @@ class CriteriaInspector
      * every search on such a store skipped Quissly silently (a live
      * 2.4.7-p10 store, 2026-09-25).
      */
-    private const ALLOWED_SORT_FIELDS = ['relevance', 'entity_id', 'is_out_of_stock', 'price'];
+    private const ALLOWED_SORT_FIELDS = ['relevance', 'entity_id', 'is_out_of_stock', ...self::QUISSLY_SORTS];
+
+    /**
+     * The shopper's sorts Quissly does, by Magento sort field.
+     *
+     * name is Magento's own option; created_at is not, but is the code a theme or
+     * extension gives a "Newest" option (the sync sends it as metadata.created_at).
+     * news_from_date ("Set Product as New From") is a date the merchant sets, not
+     * when the product was made, so it stays native. Magento has no popularity sort.
+     */
+    public const QUISSLY_SORTS = ['price', 'name', 'created_at'];
 
     /**
      * Sequences the backend rejects with a 422 - pre-screened
@@ -160,7 +171,7 @@ class CriteriaInspector
     /**
      * Whether every sort order is one interception honours.
      *
-     * ALLOWED_SORT_FIELDS: relevance and its tie-breakers, or price.
+     * ALLOWED_SORT_FIELDS: relevance and its tie-breakers, or a sort Quissly does.
      *
      * Sort orders at this layer are a plain field => direction map (spike-verified).
      *
@@ -173,18 +184,20 @@ class CriteriaInspector
     }
 
     /**
-     * The shopper's price sort: 'asc', 'desc', or null when the search is not sorted by price.
+     * The shopper's sort Quissly does (QUISSLY_SORTS), or null for relevance.
+     *
+     * The first one in the criteria, with its direction: 'asc' / 'desc'.
      *
      * @param SearchCriteriaInterface $criteria
-     * @return string|null
+     * @return array{field: string, direction: string}|null
      */
-    public function priceSort(SearchCriteriaInterface $criteria): ?string
+    public function quisslySort(SearchCriteriaInterface $criteria): ?array
     {
         foreach ((array)$criteria->getSortOrders() as $field => $direction) {
             $name = is_object($direction) ? (string)$direction->getField() : (string)$field;
-            if ($name === 'price') {
+            if (in_array($name, self::QUISSLY_SORTS, true)) {
                 $value = is_object($direction) ? (string)$direction->getDirection() : (string)$direction;
-                return strtolower($value) === 'desc' ? 'desc' : 'asc';
+                return ['field' => $name, 'direction' => strtolower($value) === 'desc' ? 'desc' : 'asc'];
             }
         }
         return null;
