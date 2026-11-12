@@ -101,7 +101,7 @@ class Suggest implements HttpGetActionInterface, CsrfAwareActionInterface
             return $this->notFound();
         }
 
-        if (!$this->throttle->allow(QuickClient::KIND)) {
+        if (!$this->throttle->allow(QuickClient::KIND) || !$this->throttle->allowStore(QuickClient::KIND)) {
             return $this->empty();
         }
 

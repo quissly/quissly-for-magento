@@ -486,6 +486,12 @@ class Dashboard extends Template
             'supported' => version_compare($magento, self::MIN_MAGENTO, '>=')
                 && in_array($php, self::PHP_VERSIONS, true),
             'version' => $this->updater->installedVersion(),
+            // On Never: a newer version the daily check found, and how to install it.
+            'available' => ($available = $this->updater->availableVersion()) === null ? '' : (string)__(
+                'Quissly %1 is available. Install it with bin/magento quissly:update, or choose an update check '
+                . 'frequency in Stores > Configuration > Quissly > Updates.',
+                $available
+            ),
             'automatic' => $automatic,
             'checked' => $this->when(max((int)($state['checked_at'] ?? 0), (int)($state['hinted_at'] ?? 0))),
             'latest' => (string)($state['latest'] ?? ''),

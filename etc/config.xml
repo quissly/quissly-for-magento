@@ -31,6 +31,7 @@
                 <enable_voice>0</enable_voice>
                 <enable_quick>0</enable_quick>
                 <enable_events>1</enable_events>
+                <enable_order_status>1</enable_order_status>
                 <quick_style>rows</quick_style>
                 <enable_image>0</enable_image>
                 <enable_qchat>0</enable_qchat>

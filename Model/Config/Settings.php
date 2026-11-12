@@ -81,6 +81,7 @@ class Settings
     private const PATH_ENABLE_IMAGE = 'quissly/features/enable_image';
     private const PATH_ENABLE_QUICK = 'quissly/features/enable_quick';
     private const PATH_ENABLE_EVENTS = 'quissly/features/enable_events';
+    private const PATH_ENABLE_ORDER_STATUS = 'quissly/features/enable_order_status';
     private const PATH_QUICK_STYLE = 'quissly/features/quick_style';
     private const PATH_QCHAT_SCRIPT_URL = 'quissly/features/qchat_script_url';
     private const PATH_OVERLAY_MOUNT_SELECTOR = 'quissly/features/overlay_mount_selector';
@@ -611,6 +612,21 @@ class Settings
     {
         return (bool)$this->scopeConfig->isSetFlag(
             self::PATH_ENABLE_EVENTS,
+            ScopeInterface::SCOPE_WEBSITE,
+            $this->resolveWebsiteId($websiteId)
+        );
+    }
+
+    /**
+     * Whether QChat may ask this website about an order (Controller/Orders/Lookup). Default ON.
+     *
+     * @param int|null $websiteId
+     * @return bool
+     */
+    public function isOrderStatusEnabled(?int $websiteId = null): bool
+    {
+        return (bool)$this->scopeConfig->isSetFlag(
+            self::PATH_ENABLE_ORDER_STATUS,
             ScopeInterface::SCOPE_WEBSITE,
             $this->resolveWebsiteId($websiteId)
         );

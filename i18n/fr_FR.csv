@@ -31,3 +31,5 @@
 "Your recent searches","Vos recherches récentes"
 "Remove %1 from recent searches","Retirer « %1 » des recherches récentes"
 "Clear search","Effacer la recherche"
+Order status in QChat,Statut des commandes dans QChat
+"When a shopper asks the chat about an order, Quissly asks this store, and the store answers only if the email or phone they give is the order's own: its status, items and tracking. Nothing else about your orders is sent to Quissly. On by default.","Quand un client demande au chat où en est une commande, Quissly interroge cette boutique, qui ne répond que si l'e-mail ou le téléphone donné est celui de la commande : son statut, ses articles et son suivi. Rien d'autre sur vos commandes n'est envoyé à Quissly. Activé par défaut."

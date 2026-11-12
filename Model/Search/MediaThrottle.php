@@ -36,7 +36,16 @@ class MediaThrottle
     /** Window length in seconds. */
     public const WINDOW_SECONDS = 60;
 
+    /** Per kind: [requests, window seconds], for the whole store (allowStore()). */
+    public const STORE_LIMITS = [
+        'events' => [1200, 60],
+        'quick' => [1200, 60],
+        'voice' => [60, 600],
+        'image' => [60, 600],
+    ];
+
     private const CACHE_PREFIX = 'quissly_media_rl_';
+    private const STORE_PREFIX = 'quissly_store_rl_';
     private const CACHE_TAG = 'QUISSLY_MEDIA_RL';
 
     /**
@@ -70,6 +79,34 @@ class MediaThrottle
             [self::CACHE_TAG],
             self::WINDOW_SECONDS
         );
+
+        return $count <= $limit;
+    }
+
+    /**
+     * Whether the whole store may make another request of this kind now.
+     *
+     * A store-wide limit on top of the per-IP one (the CS-Cart add-on's numbers, after a
+     * client's review, 2026-11-03): a bot network rotating addresses gets a fresh per-IP
+     * budget for each address, but not past this. Unlike allow(), the window is FIXED (its
+     * number is in the key): a cache save restarts its lifetime, so a store-wide counter
+     * saved on every request would never expire under steady traffic and would then refuse
+     * every shopper. A kind without a limit is not counted.
+     *
+     * @param string $kind QuickClient::KIND, MediaSearchClient::KIND_*, or 'events'
+     * @param int|null $now unix time (tests)
+     * @return bool
+     */
+    public function allowStore(string $kind, ?int $now = null): bool
+    {
+        if (!isset(self::STORE_LIMITS[$kind])) {
+            return true;
+        }
+        [$limit, $window] = self::STORE_LIMITS[$kind];
+        $now = $now ?? time();
+        $key = self::STORE_PREFIX . $kind . '_' . intdiv($now, $window);
+        $count = (int)$this->cache->load($key) + 1;
+        $this->cache->save((string)$count, $key, [self::CACHE_TAG], $window * 2);
 
         return $count <= $limit;
     }

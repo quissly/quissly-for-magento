@@ -300,6 +300,16 @@ $updates = $block->updates();
                         <th><?= $escaper->escapeHtml(__('Automatic updates')) ?></th>
                         <td><?= $escaper->escapeHtml($updates['automatic']) ?></td>
                     </tr>
+                    <?php if ($updates['available'] !== ''): ?>
+                        <tr>
+                            <th><?= $escaper->escapeHtml(__('New version')) ?></th>
+                            <td>
+                                <span class="grid-severity-notice">
+                                    <span><?= $escaper->escapeHtml($updates['available']) ?></span>
+                                </span>
+                            </td>
+                        </tr>
+                    <?php endif; ?>
                     <?php if ($updates['checked'] !== ''): ?>
                         <tr>
                             <th><?= $escaper->escapeHtml(__('Last check')) ?></th>

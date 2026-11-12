@@ -18,6 +18,7 @@ use Magento\Framework\FlagManager;
 use Magento\Framework\Filesystem\Driver\File;
 use Magento\Framework\HTTP\Client\CurlFactory;
 use Magento\Framework\Lock\LockManagerInterface;
+use Magento\Framework\Notification\NotifierInterface;
 use Laminas\Uri\UriFactory;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Process\Process;
@@ -63,6 +64,8 @@ class Updater
     public const REPOSITORY = 'quissly/quissly-for-magento';
     public const ASSET = 'quissly-for-magento.zip';
     public const FLAG = 'quissly_update';
+    /** On "Never": the newer version the CDN named and the last one announced (noticeIfDue()). */
+    public const AVAILABLE_FLAG = 'quissly_update_available';
     public const CHECK_EVERY = 86400;
     public const RETRY_AFTER = 3600;
 
@@ -97,6 +100,7 @@ class Updater
      * @param Release $release
      * @param LoggerInterface $logger
      * @param ScopeConfigInterface $config
+     * @param NotifierInterface $notifier
      */
     public function __construct(
         private readonly CurlFactory $curlFactory,
@@ -110,7 +114,8 @@ class Updater
         private readonly LockManagerInterface $locks,
         private readonly Release $release,
         private readonly LoggerInterface $logger,
-        private readonly ScopeConfigInterface $config
+        private readonly ScopeConfigInterface $config,
+        private readonly NotifierInterface $notifier
     ) {
     }
 
@@ -127,6 +132,8 @@ class Updater
     {
         $every = $this->interval();
         if (!$force && $every === Release::NEVER) {
+            // Nothing is installed, but the merchant is still told when a newer version is out.
+            $this->noticeIfDue($now);
             return 'never';
         }
         $state = (array)($this->flags->getFlagData(self::FLAG) ?: []);
@@ -250,6 +257,92 @@ class Updater
             $this->logger->warning($message);
             $state['problem']['logged_at'] = $now;
         }
+    }
+
+    /**
+     * On "Never": once a day, read the CDN's version (no API call, nothing downloaded) and keep the
+     * newer one for the Dashboard; each newer version goes once into Magento's admin notifications
+     * (the bell) - as the CS-Cart add-on, after a client's review. Never throws.
+     *
+     * @param int $now
+     * @return void
+     */
+    private function noticeIfDue(int $now): void
+    {
+        try {
+            $known = (array)($this->flags->getFlagData(self::AVAILABLE_FLAG) ?: []);
+            if ((int)($known['checked_at'] ?? 0) > $now - self::CHECK_EVERY) {
+                return;
+            }
+            // Claimed before the network: the next tick finds it not due.
+            $this->flags->saveFlag(self::AVAILABLE_FLAG, ['checked_at' => $now] + $known);
+            $hinted = $this->hintedVersion();
+            if ($hinted === null) {
+                return; // the last answer stands; asked again tomorrow
+            }
+            $notified = (string)($known['notified'] ?? '');
+            if (!version_compare($hinted, $this->installedVersion(), '>')) {
+                $this->flags->saveFlag(self::AVAILABLE_FLAG, ['checked_at' => $now, 'notified' => $notified]);
+                return;
+            }
+            $tell = $this->shouldNotify($notified, $hinted);
+            // Recorded before the notification goes out: one that fails is not added again every day.
+            $this->flags->saveFlag(
+                self::AVAILABLE_FLAG,
+                ['checked_at' => $now, 'version' => $hinted, 'notified' => $tell ? $hinted : $notified]
+            );
+            if ($tell) {
+                $this->notifier->addNotice(
+                    (string)__('Quissly %1 is available', $hinted),
+                    (string)__(
+                        'Automatic updates are off (Update check frequency: Never). Install it with '
+                        . 'bin/magento quissly:update, or choose an update check frequency in Stores > '
+                        . 'Configuration > Quissly > Updates.'
+                    ),
+                    'https://github.com/' . self::REPOSITORY . '/releases/tag/v' . rawurlencode($hinted)
+                );
+            }
+        } catch (\Throwable $e) {
+            $this->logger->warning('Quissly could not check for a new version for its notice', [
+                'reason' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Whether $version is still to be announced, $notified the last one announced ('' = none).
+     *
+     * @param string $notified
+     * @param string $version
+     * @return bool
+     */
+    public function shouldNotify(string $notified, string $version): bool
+    {
+        return $notified === '' || version_compare($version, $notified, '>');
+    }
+
+    /**
+     * The newer version a "Never" store was told about, null when there is none (or it is installed).
+     *
+     * @param array|null $state the AVAILABLE_FLAG data
+     * @param string $installed
+     * @return string|null
+     */
+    public function available(?array $state, string $installed): ?string
+    {
+        $version = is_array($state) && is_string($state['version'] ?? null) ? $state['version'] : '';
+        return $version !== '' && version_compare($version, $installed, '>') ? $version : null;
+    }
+
+    /**
+     * The newer version a "Never" store has waiting (Dashboard), or null.
+     *
+     * @return string|null
+     */
+    public function availableVersion(): ?string
+    {
+        $state = $this->flags->getFlagData(self::AVAILABLE_FLAG);
+        return $this->available(is_array($state) ? $state : null, $this->installedVersion());
     }
 
     /**

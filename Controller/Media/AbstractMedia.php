@@ -155,9 +155,9 @@ abstract class AbstractMedia implements HttpPostActionInterface, CsrfAwareAction
             return $this->resultFactory->create(ResultFactory::TYPE_FORWARD)->forward('noroute');
         }
 
-        // Per-IP throttle: counted before any parsing or API call, so a flood
-        // costs this process a cache read rather than a paid Gemini call.
-        if (!$this->throttle->allow($this->kind())) {
+        // Per-IP throttle, then the store-wide one: counted before any parsing or API
+        // call, so a flood costs this process a cache read rather than a paid Gemini call.
+        if (!$this->throttle->allow($this->kind()) || !$this->throttle->allowStore($this->kind())) {
             return $this->json(['status' => 'error', 'message' => 'Too many requests.'], 429);
         }
 

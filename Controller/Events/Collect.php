@@ -91,7 +91,7 @@ class Collect implements HttpPostActionInterface, CsrfAwareActionInterface
         if (!$this->recorder->enabled((int)$this->storeManager->getStore()->getWebsiteId())) {
             return $this->status(404);
         }
-        if (!$this->throttle->allow(self::KIND, self::LIMIT_PER_MINUTE)) {
+        if (!$this->throttle->allow(self::KIND, self::LIMIT_PER_MINUTE) || !$this->throttle->allowStore(self::KIND)) {
             return $this->status(429);
         }
         $raw = method_exists($this->request, 'getContent') ? (string)$this->request->getContent() : '';

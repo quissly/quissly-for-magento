@@ -19,6 +19,9 @@ class EventQueue
 {
     private const TABLE = 'quissly_event_queue';
 
+    /** Every TRIM_EVERY-th row trims the website's queue to EventSender::KEEP (a store not sending, a flood). */
+    public const TRIM_EVERY = 500;
+
     /**
      * @param ResourceConnection $resource
      */
@@ -36,13 +39,18 @@ class EventQueue
      */
     public function add(int $websiteId, array $body, int $now): void
     {
-        $this->resource->getConnection()->insert($this->table(), [
+        $connection = $this->resource->getConnection();
+        $connection->insert($this->table(), [
             'website_id' => $websiteId,
             'body' => (string)json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
             'attempts' => 0,
             'created_at' => $now,
             'next_at' => 0,
         ]);
+        $id = (int)$connection->lastInsertId($this->table());
+        if ($id > 0 && $id % self::TRIM_EVERY === 0) {
+            $this->trim($websiteId, EventSender::KEEP);
+        }
     }
 
     /**

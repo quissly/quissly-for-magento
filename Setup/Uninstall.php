@@ -50,6 +50,7 @@ class Uninstall implements UninstallInterface
         'quissly_plan_w',
         'quissly_version_report',
         'quissly_update',
+        'quissly_order_lookup_w',
     ];
 
     /**

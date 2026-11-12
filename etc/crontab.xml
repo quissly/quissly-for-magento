@@ -32,6 +32,11 @@
         <job name="quissly_events" instance="Quissly\Search\Cron\EventsCron" method="execute">
             <schedule>* * * * *</schedule>
         </job>
+        <!-- Where each website answers QChat's order lookups (Model/Orders/LookupRegistration),
+             told to Quissly once a day and whenever it changes. -->
+        <job name="quissly_order_lookup" instance="Quissly\Search\Cron\OrderLookupCron" method="execute">
+            <schedule>17 * * * *</schedule>
+        </job>
         <job name="quissly_reconciliation" instance="Quissly\Search\Cron\ReconciliationCron" method="execute">
             <!-- Weekly re-push: the false-success-bug backstop. Sunday 03:00. -->
             <schedule>0 3 * * *</schedule>
