@@ -163,10 +163,10 @@ class Index extends Action implements HttpPostActionInterface
                 'message' => (string)__('Description must be 500 characters or fewer.'),
             ]);
         }
-        // Quissly Setup sends the six digits Quissly mailed to the email (step=send_code, above); its
-        // sign-up refuses without them. Configuration's Connect sends none, and Quissly refuses it.
-        $code = trim((string)$this->getRequest()->getParam('verification_code'));
-        if ($description !== null && preg_match('/^\d{6}$/', $code) !== 1) {
+        // The six digits Quissly mailed to the email (step=send_code, above), from Quissly Setup and from
+        // Configuration's Connect alike (since 2026-11-16); its sign-up refuses without them.
+        $code = (string)preg_replace('/\s+/', '', (string)$this->getRequest()->getParam('verification_code'));
+        if (preg_match('/^\d{6}$/', $code) !== 1) {
             return $result->setData([
                 'ok' => false,
                 'message' => (string)__('Enter the 6-digit code we emailed you.'),

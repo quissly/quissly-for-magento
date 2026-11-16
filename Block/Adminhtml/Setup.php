@@ -111,6 +111,16 @@ class Setup extends Template
                 ),
                 'payNotYet' => (string)__('Payment not received yet.'),
                 'error' => (string)__('Could not reach the server. Try again in a minute.'),
+                // A status check the site's own security refused ([status]), and the cron line's lead-in.
+                'blocked' => (string)__(
+                    'Your site\'s security refused this page\'s request (HTTP [status]), so this status has '
+                    . 'stopped. Reload the page. If this keeps happening, let your admin address through in '
+                    . 'Cloudflare or your hosting firewall.'
+                ),
+                'cronMissing' => (string)__(
+                    'Magento\'s cron is not running, so your products are not being sent to Quissly. '
+                    . 'Add this line to the server\'s crontab:'
+                ),
                 'compare' => (string)__('Compare all features'),
                 'compareBack' => (string)__('← Back to plan cards'),
                 'emailRequired' => (string)__('Email is required.'),

@@ -221,6 +221,12 @@ class Provisioner
         ];
     }
 
+    /**
+     * A refused or failed Connect, in the shape provision() answers.
+     *
+     * @param string $error what went wrong, in the merchant's words
+     * @return array
+     */
     private function failure(string $error): array
     {
         return [

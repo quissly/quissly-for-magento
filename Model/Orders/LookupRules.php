@@ -38,7 +38,7 @@ class LookupRules
      * @param array $keys public keys by id
      * @return array{project_id: string, order_number: string, contact: string, nonce: string}|null
      */
-    public static function verify(
+    public function verify(
         string $body,
         string $signature,
         string $keyId,
@@ -50,17 +50,16 @@ class LookupRules
         ) {
             return null;
         }
-        $sig = base64_decode($signature, true);
-        $key = base64_decode($keys[$keyId], true);
-        if ($sig === false || $key === false || strlen($sig) !== 64 || strlen($key) !== 32) {
-            return null;
-        }
         try {
-            if (!sodium_crypto_sign_verify_detached($sig, $body, $key)) {
+            $sig = sodium_base642bin(trim($signature), SODIUM_BASE64_VARIANT_ORIGINAL);
+            $key = sodium_base642bin($keys[$keyId], SODIUM_BASE64_VARIANT_ORIGINAL);
+            if (strlen($sig) !== SODIUM_CRYPTO_SIGN_BYTES || strlen($key) !== SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES
+                || !sodium_crypto_sign_verify_detached($sig, $body, $key)
+            ) {
                 return null;
             }
         } catch (\Throwable $e) {
-            return null;
+            return null; // not base64, or the wrong length for sodium
         }
         $ask = json_decode($body, true);
         if (!is_array($ask)) {
@@ -90,7 +89,7 @@ class LookupRules
      * @param string $number the order's increment id
      * @return bool
      */
-    public static function sameNumber(string $given, string $number): bool
+    public function sameNumber(string $given, string $number): bool
     {
         $a = strtolower((string)preg_replace('/[^0-9A-Za-z]/', '', $given));
         $b = strtolower((string)preg_replace('/[^0-9A-Za-z]/', '', $number));
@@ -112,7 +111,7 @@ class LookupRules
      * @param string $given
      * @return string[]
      */
-    public static function candidates(string $given): array
+    public function candidates(string $given): array
     {
         $clean = (string)preg_replace('/[^0-9A-Za-z-]/', '', $given);
         if ($clean === '') {
@@ -137,7 +136,7 @@ class LookupRules
      * @param string[] $phones
      * @return bool
      */
-    public static function contactMatches(string $contact, array $emails, array $phones): bool
+    public function contactMatches(string $contact, array $emails, array $phones): bool
     {
         $contact = strtolower(trim($contact));
         if (str_contains($contact, '@')) {
@@ -175,7 +174,7 @@ class LookupRules
      * @param float $shipped quantity shipped
      * @return array{fulfillment_status: string, financial_status: string, cancelled: bool}
      */
-    public static function statuses(
+    public function statuses(
         string $state,
         float $grandTotal,
         float $paid,

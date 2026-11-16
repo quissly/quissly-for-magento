@@ -39,12 +39,14 @@ class Lookup implements HttpPostActionInterface, CsrfAwareActionInterface
      * @param ResultFactory $resultFactory
      * @param CacheInterface $cache
      * @param OrderLookup $lookup
+     * @param LookupRules $rules
      */
     public function __construct(
         private readonly RequestInterface $request,
         private readonly ResultFactory $resultFactory,
         private readonly CacheInterface $cache,
-        private readonly OrderLookup $lookup
+        private readonly OrderLookup $lookup,
+        private readonly LookupRules $rules
     ) {
     }
 
@@ -81,7 +83,7 @@ class Lookup implements HttpPostActionInterface, CsrfAwareActionInterface
         $result = $this->resultFactory->create(ResultFactory::TYPE_JSON);
         $result->setHeader('Cache-Control', 'no-store', true);
         $body = $this->request instanceof Http ? (string)$this->request->getContent() : '';
-        $ask = LookupRules::verify(
+        $ask = $this->rules->verify(
             $body,
             (string)$this->request->getHeader('X-Quissly-Signature'),
             (string)$this->request->getHeader('X-Quissly-Key-Id'),

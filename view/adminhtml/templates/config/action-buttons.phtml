@@ -48,6 +48,24 @@ $badgeColor = match ($status['state'] ?? '') {
                 <span><?= $escaper->escapeHtml(__('Connect to Quissly')) ?></span>
             </button>
         </div>
+        <?php // Quissly creates an account only with the code it emailed (Connect's step=send_code). ?>
+        <div class="quissly-actions__row"
+             style="display:flex;flex-wrap:wrap;align-items:center;gap:14px 10px;margin-bottom:6px">
+            <label class="label" for="quissly-connect-code">
+                <?= $escaper->escapeHtml(__('Verification code')) ?>
+            </label>
+            <input type="text" id="quissly-connect-code" inputmode="numeric" autocomplete="one-time-code"
+                   maxlength="7" style="width:8em"/>
+            <button type="button" class="action-secondary scalable" id="quissly-connect-send">
+                <span><?= $escaper->escapeHtml(__('Send code')) ?></span>
+            </button>
+        </div>
+        <p class="note" id="quissly-connect-code-status" style="margin:0 0 14px">
+            <?= $escaper->escapeHtml(__(
+                'Press Send code: Quissly emails a 6-digit code to the address above. Enter it here, '
+                . 'then press Connect to Quissly.'
+            )) ?>
+        </p>
         <p class="note" style="margin:0 0 12px">
             <?= $escaper->escapeHtml(__(
                 'Creates your Quissly account for this store and connects it. There is '
@@ -229,6 +247,29 @@ $badgeColor = match ($status['state'] ?? '') {
         beginProgress(start !== null && start < connectedAt ? start : connectedAt, connectedAt);
     }
 
+    var sendBtn = document.getElementById('quissly-connect-send');
+    var codeStatus = document.getElementById('quissly-connect-code-status');
+    if (sendBtn) {
+        sendBtn.addEventListener('click', function () {
+            var email = (document.getElementById('quissly-connect-email').value || '').trim();
+            var label = sendBtn.querySelector('span').textContent;
+            sendBtn.disabled = true;
+            sendBtn.querySelector('span').textContent = '<?= $escaper->escapeJs(__('Sending...')) ?>';
+            post('<?= $escaper->escapeJs($block->getData('connect_url')) ?>', {email: email, step: 'send_code'},
+                function (data) {
+                    sendBtn.disabled = false;
+                    sendBtn.querySelector('span').textContent = label;
+                    var sent = '<?= $escaper->escapeJs(__(
+                        'We sent a 6-digit code to the address above. It expires in 10 minutes.'
+                    )) ?>';
+                    codeStatus.textContent = data.ok ? sent : '⚠️ ' + (data.message || '');
+                    if (data.ok) {
+                        document.getElementById('quissly-connect-code').focus();
+                    }
+                });
+        });
+    }
+
     var connectBtn = document.getElementById('quissly-connect');
     if (connectBtn) {
         connectBtn.addEventListener('click', function () {
@@ -239,7 +280,9 @@ $badgeColor = match ($status['state'] ?? '') {
             var start = now();
             writeStart(start);
             beginProgress(start, null);
-            post('<?= $escaper->escapeJs($block->getData('connect_url')) ?>', {email: email}, function (data) {
+            var code = (document.getElementById('quissly-connect-code').value || '').replace(/\s+/g, '');
+            var fields = {email: email, verification_code: code};
+            post('<?= $escaper->escapeJs($block->getData('connect_url')) ?>', fields, function (data) {
                 if (data.ok) {
                     // Credentials exist now, but success waits for the bar:
                     // the service behind them is still being built.

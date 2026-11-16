@@ -29,12 +29,14 @@ class OrderLookup
      * @param Settings $settings
      * @param CollectionFactory $orders
      * @param ShippingHelper $shipping
+     * @param LookupRules $rules
      */
     public function __construct(
         private readonly StoreManagerInterface $storeManager,
         private readonly Settings $settings,
         private readonly CollectionFactory $orders,
-        private readonly ShippingHelper $shipping
+        private readonly ShippingHelper $shipping,
+        private readonly LookupRules $rules
     ) {
     }
 
@@ -81,7 +83,7 @@ class OrderLookup
                 $phones[] = (string)$address->getTelephone();
             }
         }
-        if (!LookupRules::contactMatches($contact, $emails, $phones)) {
+        if (!$this->rules->contactMatches($contact, $emails, $phones)) {
             return ['status' => 'not_found'];
         }
 
@@ -95,7 +97,7 @@ class OrderLookup
                 $items[] = ['title' => strip_tags((string)$item->getName()), 'quantity' => (int)$item->getQtyOrdered()];
             }
         }
-        $statuses = LookupRules::statuses(
+        $statuses = $this->rules->statuses(
             (string)$order->getState(),
             (float)$order->getGrandTotal(),
             (float)$order->getTotalPaid(),
@@ -129,7 +131,7 @@ class OrderLookup
      */
     private function find(int $websiteId, string $number): ?Order
     {
-        $candidates = LookupRules::candidates($number);
+        $candidates = $this->rules->candidates($number);
         $storeIds = [];
         foreach ($this->storeManager->getStores() as $store) {
             if ((int)$store->getWebsiteId() === $websiteId) {
@@ -144,7 +146,7 @@ class OrderLookup
             ->addFieldToFilter('store_id', ['in' => $storeIds])
             ->setPageSize(2);
         foreach ($collection as $order) {
-            if ($order instanceof Order && LookupRules::sameNumber($number, (string)$order->getIncrementId())) {
+            if ($order instanceof Order && $this->rules->sameNumber($number, (string)$order->getIncrementId())) {
                 return $order;
             }
         }

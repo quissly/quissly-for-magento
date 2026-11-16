@@ -12,6 +12,7 @@ use Magento\Framework\App\Action\HttpPostActionInterface;
 use Magento\Framework\Controller\Result\Json;
 use Magento\Framework\Controller\Result\JsonFactory;
 use Quissly\Search\Model\Connect\Onboarding;
+use Quissly\Search\Model\Connect\CronHealth;
 
 /**
  * The Go live step's progress list, polled while the page is open.
@@ -26,11 +27,13 @@ class Status extends Action implements HttpPostActionInterface
     /**
      * @param Action\Context $context
      * @param Onboarding $onboarding
+     * @param CronHealth $cronHealth
      * @param JsonFactory $jsonFactory
      */
     public function __construct(
         Action\Context $context,
         private readonly Onboarding $onboarding,
+        private readonly CronHealth $cronHealth,
         private readonly JsonFactory $jsonFactory
     ) {
         parent::__construct($context);
@@ -47,6 +50,9 @@ class Status extends Action implements HttpPostActionInterface
             $this->onboarding->retrySync();
         }
         $this->onboarding->advance();
-        return $this->jsonFactory->create()->setData(['ok' => true] + $this->onboarding->status());
+        // Whether Magento's cron runs the sync: Go live says so, with the line, while it does not.
+        return $this->jsonFactory->create()->setData(
+            ['ok' => true] + $this->onboarding->status() + ['cron' => $this->cronHealth->status(time())]
+        );
     }
 }
